@@ -18,9 +18,30 @@ impl std::fmt::Display for PlayerType {
 }
 
 fn main() {
+    // Perft debug
+    let mut board = game::Board::new();
+    // let moves = board.get_pseudo_legal_moves();
+
+    // See the number of moves at after a given depth
+    let depth = 3;
+    println!(
+        "Number of moves at depth {}: {}",
+        depth,
+        game::perft(&mut board, depth)
+    );
+
+    // Play a sequence of moves, then see what moves are playable
+    // let first_move = game::Move::new(11, 27, 0, None);
+    // board.make_move(first_move);
+    // let moves = board.get_pseudo_legal_moves();
+    // println!("Number of moves: {}", moves.len());
+    // for m in moves {
+    //     println!("{:?}", m);
+    // }
+
     // Ask the user to choose the PlayerType of white and black
-    let (white, black) = get_player_types();
-    println!("Starting game with white ({white}) vs black ({black})");
+    // let (white, black) = get_player_types();
+    // println!("Starting game with white ({white}) vs black ({black})");
 
     // Initialize the board
 
