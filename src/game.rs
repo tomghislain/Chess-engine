@@ -91,13 +91,12 @@ impl Piece {
 }
 
 impl Undo {
-    pub fn new(board: &Board, mv: &Move) -> Self {
-        // TODO: inline function in make_move to avoid captured piece recomputation
+    pub fn new(board: &Board, mv: &Move, captured_piece: Option<Piece>) -> Self {
         Undo {
             castling: board.castling,
             en_passant: board.en_passant,
             halfmove_clock: board.halfmove_clock,
-            captured_piece: board.piece_at(mv.to), //TODO: check for en passant
+            captured_piece,
             zobrist: board.zobrist,
         }
     }
@@ -204,27 +203,32 @@ impl Board {
 
     // Plays a move by mutating bitboards and state information, and pushes an undo entry on the stack
     pub fn make_move(&mut self, mv: Move) {
-        let undo = Undo::new(self, &mv);
-        self.undo_stack.push(undo);
-
         // TODO: Update zobrist hash
 
         // Remove piece at mv.to if capture/behin mv.to if en passant
         let is_capture = (mv.flags & CAPTURE_FLAG) != 0;
-        if is_capture {
+        let captured_piece = if is_capture {
             if (mv.flags & EN_PASSANT_FLAG) != 0 {
-                let (capture_sq, captured_piece) = if self.side_to_move == Color::White {
-                    //TODO: replace if/else with match
-                    (mv.to - 8, Piece::BP)
-                } else {
-                    (mv.to + 8, Piece::WP)
+                let (c_sq, c_p) = match self.side_to_move {
+                    Color::White => (mv.to - 8, Piece::BP),
+                    Color::Black => (mv.to - 8, Piece::WP),
                 };
-                assert!(Some(captured_piece) == self.piece_at(capture_sq)); //TODO: remove check
-                self.remove_piece(captured_piece, capture_sq);
+                assert!(Some(c_p) == self.piece_at(c_sq)); //TODO: remove check
+                self.remove_piece(c_p, c_sq);
+                Some(c_p)
             } else {
-                self.remove_piece(self.piece_at(mv.to).unwrap(), mv.to);
+                let c_p = self.piece_at(mv.to);
+                self.remove_piece(c_p.unwrap(), mv.to);
+                c_p
             }
-        }
+        } else {
+            None
+        };
+
+        // Once captured piece is computed, create and add undo to undo_stack
+        let undo = Undo::new(self, &mv, captured_piece);
+        self.undo_stack.push(undo);
+
         // Move piece from mv.from to mv.to (checking for promotion and castling)
         let moved_piece = self.piece_at(mv.from).unwrap();
         if (mv.flags & PROMOTION_FLAG) != 0 {
@@ -319,11 +323,9 @@ impl Board {
         if (mv.flags & PROMOTION_FLAG) != 0 {
             let promoted_piece = mv.promotion.unwrap();
             self.remove_piece(promoted_piece, mv.to);
-            moved_piece = match promoted_piece {
-                // TODO: compute moved_piece with side_to_move (make sure of when side_to_move is flipped)
-                Piece::WN | Piece::WB | Piece::WR | Piece::WQ => Piece::WP,
-                Piece::BN | Piece::BB | Piece::BR | Piece::BQ => Piece::BP,
-                _ => unreachable!(),
+            moved_piece = match self.side_to_move {
+                Color::White => Piece::WP,
+                Color::Black => Piece::BP,
             };
             self.add_piece(moved_piece, mv.from);
         } else {
@@ -342,14 +344,13 @@ impl Board {
         // In case of capture (and maybe en passant), restore the taken piece
         if (mv.flags & CAPTURE_FLAG) != 0 {
             if (mv.flags & EN_PASSANT_FLAG) != 0 {
-                let (capture_sq, captured_piece) = if moved_piece == Piece::WP {
-                    //TODO: replace if/else with match, use undo.captured_piece
-                    (mv.to - 8, Piece::BP)
-                } else {
-                    (mv.to + 8, Piece::WP)
+                let (c_sq, c_p) = match moved_piece {
+                    Piece::WP => (mv.to - 8, Piece::BP),
+                    Piece::BP => (mv.to - 8, Piece::WP),
+                    _ => unreachable!(),
                 };
-                assert!(Some(captured_piece) == self.piece_at(capture_sq)); //TODO: remove check
-                self.add_piece(captured_piece, capture_sq);
+                assert!(Some(c_p) == self.piece_at(c_sq)); //TODO: remove check
+                self.add_piece(c_p, c_sq);
             } else {
                 self.add_piece(undo.captured_piece.unwrap(), mv.to);
             }
@@ -374,6 +375,24 @@ impl Board {
         self.occ = self.white_occ | self.black_occ;
     }
 
+    const fn gen_white_pawn_attacks() -> [u64; 64] {
+        let mut table = [0; 64];
+        let mut sq = 0;
+        while sq < 64 {
+            let sq_mask = 1u64 << sq;
+            let mut mask = 0u64;
+            if sq < 56 {
+                mask |= (sq_mask << 7) & !FILE_H;
+                mask |= (sq_mask << 9) & !FILE_A;
+            }
+            table[sq] = mask;
+            sq += 1;
+        }
+        table
+    }
+
+    const WHITE_PAWN_ATTACKS: [u64; 64] = Self::gen_white_pawn_attacks();
+
     fn get_white_pawn_moves(&self, moves: &mut Vec<Move>, their_occ: u64) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
@@ -384,7 +403,14 @@ impl Board {
             let to = single_push.trailing_zeros() as u8;
             single_push &= single_push - 1;
             let from = to - 8;
-            moves.push(Move::new(from, to, 0, None)); //TODO: handle promotions
+            if (56..64).contains(&(to as i32)) {
+                moves.push(Move::new(from, to, 0, Some(Piece::WN)));
+                moves.push(Move::new(from, to, 0, Some(Piece::WB)));
+                moves.push(Move::new(from, to, 0, Some(Piece::WR)));
+                moves.push(Move::new(from, to, 0, Some(Piece::WQ)));
+            } else {
+                moves.push(Move::new(from, to, 0, None));
+            }
         }
 
         // Double pushes
@@ -404,14 +430,28 @@ impl Board {
             let to = left_captures.trailing_zeros() as u8;
             left_captures &= left_captures - 1;
             let from = to - 7;
-            moves.push(Move::new(from, to, CAPTURE_FLAG, None)); //TODO: handle promotions
+            if (56..64).contains(&(to as i32)) {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
+            } else {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
         }
         let mut right_captures = ((pawns << 9) & !FILE_A) & their_occ;
         while right_captures != 0 {
             let to = right_captures.trailing_zeros() as u8;
             right_captures &= right_captures - 1;
             let from = to - 9;
-            moves.push(Move::new(from, to, CAPTURE_FLAG, None)); //TODO: handle promotions
+            if (56..64).contains(&(to as i32)) {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
+            } else {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
         }
 
         // En passant
@@ -434,6 +474,24 @@ impl Board {
         }
     }
 
+    const fn gen_black_pawn_attacks() -> [u64; 64] {
+        let mut table = [0; 64];
+        let mut sq = 0;
+        while sq < 64 {
+            let sq_mask = 1u64 << sq;
+            let mut mask = 0u64;
+            if sq > 7 {
+                mask |= (sq_mask >> 7) & !FILE_A;
+                mask |= (sq_mask >> 9) & !FILE_H;
+            }
+            table[sq] = mask;
+            sq += 1;
+        }
+        table
+    }
+
+    const BLACK_PAWN_ATTACKS: [u64; 64] = Self::gen_black_pawn_attacks();
+
     fn get_black_pawn_moves(&self, moves: &mut Vec<Move>, their_occ: u64) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
@@ -444,7 +502,14 @@ impl Board {
             let to = single_push.trailing_zeros() as u8;
             single_push &= single_push - 1;
             let from = to + 8;
-            moves.push(Move::new(from, to, 0, None)); //TODO: handle promotions
+            if (0..8).contains(&(to as i32)) {
+                moves.push(Move::new(from, to, 0, Some(Piece::WN)));
+                moves.push(Move::new(from, to, 0, Some(Piece::WB)));
+                moves.push(Move::new(from, to, 0, Some(Piece::WR)));
+                moves.push(Move::new(from, to, 0, Some(Piece::WQ)));
+            } else {
+                moves.push(Move::new(from, to, 0, None));
+            }
         }
 
         // Double pushes
@@ -464,27 +529,41 @@ impl Board {
             let to = left_captures.trailing_zeros() as u8;
             left_captures &= left_captures - 1;
             let from = to + 7;
-            moves.push(Move::new(from, to, CAPTURE_FLAG, None)); //TODO: handle promotions
+            if (0..8).contains(&(to as i32)) {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
+            } else {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
         }
         let mut right_captures = ((pawns >> 9) & !FILE_H) & their_occ;
         while right_captures != 0 {
             let to = right_captures.trailing_zeros() as u8;
             right_captures &= right_captures - 1;
             let from = to + 9;
-            moves.push(Move::new(from, to, CAPTURE_FLAG, None)); //TODO: handle promotions
+            if (0..8).contains(&(to as i32)) {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
+                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
+            } else {
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
         }
 
         // En passant
         let en_passant_mask = (self.en_passant as u64) << 16;
         if en_passant_mask != 0 {
-            let mut left_en_passant = ((pawns >> 7) & !FILE_H) & en_passant_mask;
+            let mut left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
             while left_en_passant != 0 {
                 let to = left_en_passant.trailing_zeros() as u8;
                 left_en_passant &= left_en_passant - 1;
                 let from = to + 7;
                 moves.push(Move::new(from, to, CAPTURE_FLAG | EN_PASSANT_FLAG, None));
             }
-            let mut right_en_passant = ((pawns >> 9) & !FILE_A) & en_passant_mask;
+            let mut right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
             while right_en_passant != 0 {
                 let to = right_en_passant.trailing_zeros() as u8;
                 right_en_passant &= right_en_passant - 1;
@@ -550,85 +629,125 @@ impl Board {
         }
     }
 
-    fn gen_sliding_moves(
-        &self,
-        mut pieces: u64,
-        directions: &[i16],
-        moves: &mut Vec<Move>,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
-        while pieces != 0 {
-            let from = pieces.trailing_zeros() as i16;
-            pieces &= pieces - 1;
+    fn gen_sliding_moves(&self, sq: u8, directions: &[i16], our_occ: u64, their_occ: u64) -> u64 {
+        let mut result = 0u64;
 
-            for offset in directions {
-                let mut sq = from;
-                loop {
-                    let next = sq + offset;
+        for offset in directions {
+            let mut current = sq as i16;
+            loop {
+                let next = current + offset;
 
-                    // Bound and wraparound checks
-                    if !(0..64).contains(&next)
+                // Bound and wraparound checks
+                if !(0..64).contains(&next)
                         // Check if file differs by more than 1
-                        || ((next & 7) - (sq & 7)).abs() > 1
+                        || ((next & 7) - (current & 7)).abs() > 1
                         // Check if rank differs by more than 1
-                        || ((next >> 3) - (sq >> 3)).abs() > 1
-                    {
-                        break;
-                    }
-
-                    let next_mask = 1u64 << next;
-
-                    if our_occ & next_mask != 0 {
-                        break;
-                    }
-
-                    if their_occ & next_mask != 0 {
-                        moves.push(Move::new(from as u8, next as u8, CAPTURE_FLAG, None));
-                        break;
-                    }
-
-                    moves.push(Move::new(from as u8, next as u8, 0, None));
-
-                    sq = next;
+                        || ((next >> 3) - (current >> 3)).abs() > 1
+                {
+                    break;
                 }
+
+                let next_mask = 1u64 << next;
+
+                if our_occ & next_mask != 0 {
+                    break;
+                }
+
+                if their_occ & next_mask != 0 {
+                    result |= next_mask;
+                    break;
+                }
+
+                result |= next_mask;
+
+                current = next;
             }
         }
+        result
     }
 
+    const BISHOP_DIRECTION_OFFSETS: [i16; 4] = [9, 7, -7, -9];
+
     fn get_bishop_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let bishops = match self.side_to_move {
+        let mut bishops = match self.side_to_move {
             Color::White => self.pieces[Piece::WB as usize],
             Color::Black => self.pieces[Piece::BB as usize],
         };
 
-        const BISHOP_DIRECTION_OFFSETS: [i16; 4] = [9, 7, -7, -9];
-        self.gen_sliding_moves(
-            bishops,
-            &BISHOP_DIRECTION_OFFSETS,
-            moves,
-            our_occ,
-            their_occ,
-        );
+        while bishops != 0 {
+            let from = bishops.trailing_zeros() as u8;
+            bishops &= bishops - 1;
+            let attacks =
+                self.gen_sliding_moves(from, &Self::BISHOP_DIRECTION_OFFSETS, our_occ, their_occ);
+            let mut non_captures = attacks & !their_occ;
+            let mut captures = attacks & their_occ;
+            while non_captures != 0 {
+                let to = non_captures.trailing_zeros() as u8;
+                non_captures &= non_captures - 1;
+                moves.push(Move::new(from, to, 0, None));
+            }
+            while captures != 0 {
+                let to = captures.trailing_zeros() as u8;
+                captures &= captures - 1;
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
+        }
     }
+
+    const ROOK_DIRECTION_OFFSETS: [i16; 4] = [8, 1, -1, -8];
+
     fn get_rook_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let rooks = match self.side_to_move {
+        let mut rooks = match self.side_to_move {
             Color::White => self.pieces[Piece::WR as usize],
             Color::Black => self.pieces[Piece::BR as usize],
         };
 
-        const ROOK_DIRECTION_OFFSETS: [i16; 4] = [8, 1, -1, -8];
-        self.gen_sliding_moves(rooks, &ROOK_DIRECTION_OFFSETS, moves, our_occ, their_occ);
+        while rooks != 0 {
+            let from = rooks.trailing_zeros() as u8;
+            rooks &= rooks - 1;
+            let attacks =
+                self.gen_sliding_moves(from, &Self::ROOK_DIRECTION_OFFSETS, our_occ, their_occ);
+            let mut non_captures = attacks & !their_occ;
+            let mut captures = attacks & their_occ;
+            while non_captures != 0 {
+                let to = non_captures.trailing_zeros() as u8;
+                non_captures &= non_captures - 1;
+                moves.push(Move::new(from, to, 0, None));
+            }
+            while captures != 0 {
+                let to = captures.trailing_zeros() as u8;
+                captures &= captures - 1;
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
+        }
     }
 
     fn get_queen_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let queen = match self.side_to_move {
+        let mut queens = match self.side_to_move {
             Color::White => self.pieces[Piece::WQ as usize],
             Color::Black => self.pieces[Piece::BQ as usize],
         };
 
         const QUEEN_DIRECTION_OFFSETS: [i16; 8] = [9, 8, 7, 1, -1, -7, -8, -9];
-        self.gen_sliding_moves(queen, &QUEEN_DIRECTION_OFFSETS, moves, our_occ, their_occ);
+
+        while queens != 0 {
+            let from = queens.trailing_zeros() as u8;
+            queens &= queens - 1;
+            let attacks =
+                self.gen_sliding_moves(from, &QUEEN_DIRECTION_OFFSETS, our_occ, their_occ);
+            let mut non_captures = attacks & !their_occ;
+            let mut captures = attacks & their_occ;
+            while non_captures != 0 {
+                let to = non_captures.trailing_zeros() as u8;
+                non_captures &= non_captures - 1;
+                moves.push(Move::new(from, to, 0, None));
+            }
+            while captures != 0 {
+                let to = captures.trailing_zeros() as u8;
+                captures &= captures - 1;
+                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+            }
+        }
     }
 
     const fn gen_king_attacks() -> [u64; 64] {
@@ -712,20 +831,86 @@ impl Board {
 
         moves
     }
-}
 
-fn is_king_checked(board: &Board) -> bool {
-    let king_square = match board.side_to_move {
-        Color::White => board.pieces[Piece::WK as usize].trailing_zeros() as u8,
-        Color::Black => board.pieces[Piece::BK as usize].trailing_zeros() as u8,
-    };
-    board
-        .get_pseudo_legal_moves()
-        .iter()
-        .filter(|m| m.flags & CAPTURE_FLAG != 0)
-        .filter(|m| m.to == king_square)
-        .count()
-        > 0
+    fn is_square_attacked(&self, sq: u8, by: Color) -> bool {
+        let (our_occ, their_occ, pawns, knights, bishops, rooks, queens, king) = match by {
+            Color::White => (
+                self.white_occ,
+                self.black_occ,
+                self.pieces[Piece::WP as usize],
+                self.pieces[Piece::WN as usize],
+                self.pieces[Piece::WB as usize],
+                self.pieces[Piece::WR as usize],
+                self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WK as usize],
+            ),
+            Color::Black => (
+                self.black_occ,
+                self.white_occ,
+                self.pieces[Piece::BP as usize],
+                self.pieces[Piece::BN as usize],
+                self.pieces[Piece::BB as usize],
+                self.pieces[Piece::BR as usize],
+                self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BK as usize],
+            ),
+        };
+
+        // Pawn attacks
+        match by {
+            Color::White => {
+                if (Self::WHITE_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
+                    return true;
+                }
+            }
+            Color::Black => {
+                if (Self::BLACK_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
+                    return true;
+                }
+            }
+        }
+
+        // Knight attacks
+        if (Self::KNIGHT_ATTACKS[sq as usize] & knights) != 0 {
+            return true;
+        }
+
+        // Bishop/Queen attacks
+        if (self.gen_sliding_moves(sq, &Self::BISHOP_DIRECTION_OFFSETS, our_occ, their_occ)
+            & (bishops | queens))
+            != 0
+        {
+            return true;
+        }
+
+        // Rook/Queen attacks
+        if (self.gen_sliding_moves(sq, &Self::ROOK_DIRECTION_OFFSETS, our_occ, their_occ)
+            & (rooks | queens))
+            != 0
+        {
+            return true;
+        }
+
+        // King attacks
+        if (Self::KING_ATTACKS[sq as usize] & king) != 0 {
+            return true;
+        }
+
+        false
+    }
+
+    fn is_king_checked(&self) -> bool {
+        match self.side_to_move {
+            Color::White => self.is_square_attacked(
+                self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+                Color::Black,
+            ),
+            Color::Black => self.is_square_attacked(
+                self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+                Color::White,
+            ),
+        }
+    }
 }
 
 pub fn perft(board: &mut Board, depth: u8) -> u64 {
@@ -737,12 +922,12 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
     let moves = board.get_pseudo_legal_moves();
 
     for m in moves {
-        // println!("Making move at depth {}: {:?}", depth, m);
+        println!("Making move at depth {}: {:?}", depth, m);
         board.make_move(m);
-        if !is_king_checked(board) {
+        if !board.is_king_checked() {
             nodes += perft(board, depth - 1);
         }
-        // println!("Unmaking move at depth {}: {:?}", depth, m);
+        println!("Unmaking move at depth {}: {:?}", depth, m);
         board.unmake_move(m);
     }
     nodes
