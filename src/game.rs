@@ -2,6 +2,8 @@ pub const FILE_A: u64 = 0x0101010101010101;
 pub const FILE_B: u64 = 0x0202020202020202;
 pub const FILE_G: u64 = 0x4040404040404040;
 pub const FILE_H: u64 = 0x8080808080808080;
+pub const RANK_2: u64 = 0x000000000000FF00;
+pub const RANK_7: u64 = 0x00FF000000000000;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
@@ -71,23 +73,20 @@ pub const EN_PASSANT_FLAG: u8 = 1 << 2;
 pub const CASTLING_FLAG: u8 = 1 << 3;
 
 impl Piece {
-    pub fn from_index(index: u8) -> Option<Self> {
-        match index {
-            0 => Some(Piece::WP),
-            1 => Some(Piece::WN),
-            2 => Some(Piece::WB),
-            3 => Some(Piece::WR),
-            4 => Some(Piece::WQ),
-            5 => Some(Piece::WK),
-            6 => Some(Piece::BP),
-            7 => Some(Piece::BN),
-            8 => Some(Piece::BB),
-            9 => Some(Piece::BR),
-            10 => Some(Piece::BQ),
-            11 => Some(Piece::BK),
-            _ => None,
-        }
-    }
+    pub const PIECE_LIST: [Piece; 12] = [
+        Piece::WP,
+        Piece::WN,
+        Piece::WB,
+        Piece::WR,
+        Piece::WQ,
+        Piece::WK,
+        Piece::BP,
+        Piece::BN,
+        Piece::BB,
+        Piece::BR,
+        Piece::BQ,
+        Piece::BK,
+    ];
 }
 
 impl Color {
@@ -198,12 +197,9 @@ impl Board {
     fn piece_at(&self, sq: u8) -> Option<Piece> {
         let mask = 1 << sq;
 
-        for i in 0..self.pieces.len() {
-            if self.pieces[i] & mask != 0 {
-                return Piece::from_index(i as u8);
-            }
-        }
-        None
+        Piece::PIECE_LIST
+            .into_iter()
+            .find(|&p| self.pieces[p as usize] & mask != 0)
     }
 
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
@@ -224,69 +220,99 @@ impl Board {
         self.pieces[p as usize] ^= mask;
     }
 
-    // Plays a move by mutating bitboards and state information, and pushes an undo entry on the stack
+    #[time_graph::instrument]
     pub fn make_move(&mut self, mv: Move) {
-        // TODO: Update zobrist hash
+        let is_capture = mv.flags & CAPTURE_FLAG != 0;
+        let is_en_passant = mv.flags & EN_PASSANT_FLAG != 0;
+        let is_promotion = mv.flags & PROMOTION_FLAG != 0;
+        let is_castling = mv.flags & CASTLING_FLAG != 0;
 
-        // Remove piece at mv.to if capture/behin mv.to if en passant
-        let is_capture = (mv.flags & CAPTURE_FLAG) != 0;
+        let us = self.side_to_move;
+
+        // Remove piece if capture
         let captured_piece = if is_capture {
-            if (mv.flags & EN_PASSANT_FLAG) != 0 {
-                let (c_sq, c_p) = match self.side_to_move {
-                    Color::White => (mv.to - 8, Piece::BP),
-                    Color::Black => (mv.to + 8, Piece::WP),
+            if is_en_passant {
+                let ep_sq = if us == Color::White {
+                    mv.to - 8
+                } else {
+                    mv.to + 8
                 };
-                self.remove_piece(c_p, c_sq);
-                Some(c_p)
+                let ep_p = if us == Color::White {
+                    Piece::BP
+                } else {
+                    Piece::WP
+                };
+                self.remove_piece(ep_p, ep_sq);
+
+                let mask = 1u64 << ep_sq;
+                self.occ ^= mask;
+                if us == Color::White {
+                    self.black_occ ^= mask;
+                } else {
+                    self.white_occ ^= mask;
+                }
+
+                Some(ep_p)
             } else {
-                let c_p = self.piece_at(mv.to);
-                self.remove_piece(c_p.unwrap(), mv.to);
-                c_p
+                let c_p = self.piece_at(mv.to).unwrap();
+                self.remove_piece(c_p, mv.to);
+
+                let mask = 1u64 << mv.to;
+                self.occ ^= mask;
+                if us == Color::White {
+                    self.black_occ ^= mask;
+                } else {
+                    self.white_occ ^= mask;
+                }
+                Some(c_p)
             }
         } else {
             None
         };
 
-        // Once captured piece is computed, create and add undo to undo_stack
+        // Save undo information
         let undo = Undo::new(self, captured_piece);
         self.undo_stack.push(undo);
 
-        // Move piece from mv.from to mv.to (checking for promotion and castling)
+        // Move the played piece (plus rook for castling)
         let moved_piece = self.piece_at(mv.from).unwrap();
-        if (mv.flags & PROMOTION_FLAG) != 0 {
+        let moved_mask = (1u64 << mv.from) | (1u64 << mv.to);
+        self.occ ^= moved_mask;
+        if us == Color::White {
+            self.white_occ ^= moved_mask;
+        } else {
+            self.black_occ ^= moved_mask;
+        }
+
+        if is_promotion {
             self.remove_piece(moved_piece, mv.from);
-            self.add_piece(mv.promotion.unwrap(), mv.to);
+            let promoted_piece = mv.promotion.unwrap();
+            self.add_piece(promoted_piece, mv.to);
         } else {
             self.move_piece(moved_piece, mv.from, mv.to);
-            if (mv.flags & CASTLING_FLAG) != 0 {
-                match mv.to {
-                    62 => self.move_piece(Piece::BR, 63, 61), // black king side
-                    58 => self.move_piece(Piece::BR, 56, 59), // black queen side
-                    6 => self.move_piece(Piece::WR, 7, 5),    // white king side
-                    2 => self.move_piece(Piece::WR, 0, 3),    // white queen side
+
+            if is_castling {
+                let (rook, rook_from, rook_to) = match mv.to {
+                    62 => (Piece::BR, 63, 61), // black king side
+                    58 => (Piece::BR, 56, 59), // black queen side
+                    6 => (Piece::WR, 7, 5),    // white king side
+                    2 => (Piece::WR, 0, 3),    // white queen side
                     _ => unreachable!(),
+                };
+
+                self.move_piece(rook, rook_from, rook_to);
+
+                let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
+                self.occ ^= rook_mask;
+                if us == Color::White {
+                    self.white_occ ^= rook_mask;
+                } else {
+                    self.black_occ ^= rook_mask;
                 }
             }
         }
-        // Update occupancies/en passant/castling rights/halfmove clock/side to move
-        self.white_occ = {
-            self.pieces[Piece::WP as usize]
-                | self.pieces[Piece::WN as usize]
-                | self.pieces[Piece::WB as usize]
-                | self.pieces[Piece::WR as usize]
-                | self.pieces[Piece::WQ as usize]
-                | self.pieces[Piece::WK as usize]
-        };
-        self.black_occ = {
-            self.pieces[Piece::BP as usize]
-                | self.pieces[Piece::BN as usize]
-                | self.pieces[Piece::BB as usize]
-                | self.pieces[Piece::BR as usize]
-                | self.pieces[Piece::BQ as usize]
-                | self.pieces[Piece::BK as usize]
-        };
-        self.occ = self.white_occ | self.black_occ;
 
+        // Update en passant square
         let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
         self.en_passant = if is_pawn_move && ((mv.from as i16 - mv.to as i16).abs() == 16) {
             (mv.from + mv.to) / 2
@@ -294,24 +320,25 @@ impl Board {
             64
         };
 
+        // Update castling rights
         match moved_piece {
             Piece::WK => self.castling &= !(WK_CASTLE | WQ_CASTLE),
             Piece::BK => self.castling &= !(BK_CASTLE | BQ_CASTLE),
             Piece::WR => {
                 if mv.from == 7 {
                     self.castling &= !WK_CASTLE
-                }
+                };
                 if mv.from == 0 {
                     self.castling &= !WQ_CASTLE
-                }
+                };
             }
             Piece::BR => {
                 if mv.from == 63 {
                     self.castling &= !BK_CASTLE
-                }
+                };
                 if mv.from == 56 {
                     self.castling &= !BQ_CASTLE
-                }
+                };
             }
             _ => (),
         }
@@ -338,18 +365,19 @@ impl Board {
             }
         }
 
+        // Update halfmove clock
+
         self.halfmove_clock = if is_capture || is_pawn_move {
             0
         } else {
             self.halfmove_clock + 1
         };
 
-        self.side_to_move = match self.side_to_move {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
+        // Update side_to_move
+        self.side_to_move = self.side_to_move.flip();
     }
 
+    #[time_graph::instrument]
     fn unmake_move(&mut self, mv: Move) {
         // Pop undo stack and restore previous state
         let undo = self.undo_stack.pop().unwrap();
@@ -357,64 +385,76 @@ impl Board {
         self.en_passant = undo.en_passant;
         self.halfmove_clock = undo.halfmove_clock;
         self.zobrist = undo.zobrist;
-        self.side_to_move = match self.side_to_move {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
+        self.side_to_move = self.side_to_move.flip();
+
+        let is_capture = mv.flags & CAPTURE_FLAG != 0;
+        let is_en_passant = mv.flags & EN_PASSANT_FLAG != 0;
+        let is_castling = mv.flags & CASTLING_FLAG != 0;
+        let is_promotion = mv.flags & PROMOTION_FLAG != 0;
+        let mut our_occ_mask: u64 = 0;
+        let mut their_occ_mask: u64 = 0;
+
         // Move back the piece (checking for promotion and castling)
-        let moved_piece;
-        if (mv.flags & PROMOTION_FLAG) != 0 {
+        our_occ_mask |= (1u64 << mv.to) | (1u64 << mv.from);
+        if is_promotion {
             let promoted_piece = mv.promotion.unwrap();
             self.remove_piece(promoted_piece, mv.to);
-            moved_piece = match self.side_to_move {
-                Color::White => Piece::WP,
-                Color::Black => Piece::BP,
-            };
-            self.add_piece(moved_piece, mv.from);
-        } else {
-            moved_piece = self.piece_at(mv.to).unwrap();
-            self.move_piece(moved_piece, mv.to, mv.from);
-            if (mv.flags & CASTLING_FLAG) != 0 {
-                match mv.to {
-                    62 => self.move_piece(Piece::BR, 61, 63), // white king side
-                    58 => self.move_piece(Piece::BR, 59, 56), // white queen side
-                    6 => self.move_piece(Piece::WR, 5, 7),    // black king side
-                    2 => self.move_piece(Piece::WR, 3, 0),    // black queen side
-                    _ => unreachable!(),
+
+            match self.side_to_move {
+                Color::White => {
+                    self.add_piece(Piece::WP, mv.from);
+                }
+                Color::Black => {
+                    self.add_piece(Piece::BP, mv.from);
                 }
             }
-        }
-        // In case of capture (and maybe en passant), restore the taken piece
-        if (mv.flags & CAPTURE_FLAG) != 0 {
-            if (mv.flags & EN_PASSANT_FLAG) != 0 {
-                let (c_sq, c_p) = match moved_piece {
-                    Piece::WP => (mv.to - 8, Piece::BP),
-                    Piece::BP => (mv.to + 8, Piece::WP),
+        } else {
+            let moved_piece = self.piece_at(mv.to).unwrap();
+            self.move_piece(moved_piece, mv.to, mv.from);
+
+            if is_castling {
+                let (rook, rook_from, rook_to) = match mv.to {
+                    62 => (Piece::BR, 61, 63), // black king side
+                    58 => (Piece::BR, 59, 56), // black queen side
+                    6 => (Piece::WR, 5, 7),    // white king side
+                    2 => (Piece::WR, 3, 0),    // white queen side
                     _ => unreachable!(),
                 };
-                self.add_piece(c_p, c_sq);
-            } else {
-                self.add_piece(undo.captured_piece.unwrap(), mv.to);
+
+                self.move_piece(rook, rook_from, rook_to);
+
+                let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
+                our_occ_mask |= rook_mask;
             }
         }
+
+        // In case of capture (and maybe en passant), restore the taken piece
+        if is_capture {
+            let sq = if is_en_passant {
+                match self.side_to_move {
+                    Color::White => mv.to - 8,
+                    Color::Black => mv.to + 8,
+                }
+            } else {
+                mv.to
+            };
+            let sq_mask = 1u64 << sq;
+            their_occ_mask |= sq_mask;
+            self.add_piece(undo.captured_piece.unwrap(), sq);
+        }
+
         // Recompute occupancy
-        self.white_occ = {
-            self.pieces[Piece::WP as usize]
-                | self.pieces[Piece::WN as usize]
-                | self.pieces[Piece::WB as usize]
-                | self.pieces[Piece::WR as usize]
-                | self.pieces[Piece::WQ as usize]
-                | self.pieces[Piece::WK as usize]
-        };
-        self.black_occ = {
-            self.pieces[Piece::BP as usize]
-                | self.pieces[Piece::BN as usize]
-                | self.pieces[Piece::BB as usize]
-                | self.pieces[Piece::BR as usize]
-                | self.pieces[Piece::BQ as usize]
-                | self.pieces[Piece::BK as usize]
-        };
-        self.occ = self.white_occ | self.black_occ;
+        self.occ ^= our_occ_mask ^ their_occ_mask;
+        match self.side_to_move {
+            Color::White => {
+                self.white_occ ^= our_occ_mask;
+                self.black_occ ^= their_occ_mask;
+            }
+            Color::Black => {
+                self.black_occ ^= our_occ_mask;
+                self.white_occ ^= their_occ_mask;
+            }
+        }
     }
 
     const fn gen_white_pawn_attacks() -> [u64; 64] {
@@ -438,6 +478,7 @@ impl Board {
     fn get_white_pawn_moves(&self, moves: &mut Vec<Move>) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
+        let is_promotion = pawns & RANK_7 != 0;
 
         // Single pushes
         let mut single_push = (pawns << 8) & empty;
@@ -445,7 +486,7 @@ impl Board {
             let to = single_push.trailing_zeros() as u8;
             single_push &= single_push - 1;
             let from = to - 8;
-            if (56..64).contains(&(to as i32)) {
+            if is_promotion {
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WN)));
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WB)));
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WR)));
@@ -456,8 +497,7 @@ impl Board {
         }
 
         // Double pushes
-        let rank2: u64 = 0x000000000000FF00;
-        let first_push = ((pawns & rank2) << 8) & empty;
+        let first_push = ((pawns & RANK_2) << 8) & empty;
         let mut double_push = (first_push << 8) & empty;
         while double_push != 0 {
             let to = double_push.trailing_zeros() as u8;
@@ -478,16 +518,33 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
-                let mut flag = CAPTURE_FLAG;
-
-                if (56..64).contains(&(to as i32)) {
-                    flag |= PROMOTION_FLAG;
-                    moves.push(Move::new(from, to, flag, Some(Piece::WN)));
-                    moves.push(Move::new(from, to, flag, Some(Piece::WB)));
-                    moves.push(Move::new(from, to, flag, Some(Piece::WR)));
-                    moves.push(Move::new(from, to, flag, Some(Piece::WQ)));
+                if is_promotion {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::WN),
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::WB),
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::WR),
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::WQ),
+                    ));
                 } else {
-                    moves.push(Move::new(from, to, flag, None));
+                    moves.push(Move::new(from, to, CAPTURE_FLAG, None));
                 }
             }
         }
@@ -533,6 +590,7 @@ impl Board {
     fn get_black_pawn_moves(&self, moves: &mut Vec<Move>) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
+        let is_promotion = pawns & RANK_2 != 0;
 
         // Single pushes
         let mut single_push = (pawns >> 8) & empty;
@@ -540,7 +598,7 @@ impl Board {
             let to = single_push.trailing_zeros() as u8;
             single_push &= single_push - 1;
             let from = to + 8;
-            if (0..8).contains(&(to as i32)) {
+            if is_promotion {
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BN)));
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BB)));
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BR)));
@@ -551,8 +609,7 @@ impl Board {
         }
 
         // Double pushes
-        let rank7: u64 = 0x00FF000000000000;
-        let first_push = ((pawns & rank7) >> 8) & empty;
+        let first_push = ((pawns & RANK_7) >> 8) & empty;
         let mut double_push = (first_push >> 8) & empty;
         while double_push != 0 {
             let to = double_push.trailing_zeros() as u8;
@@ -573,16 +630,33 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
-                let mut flag = CAPTURE_FLAG;
-
-                if (0..8).contains(&(to as i32)) {
-                    flag |= PROMOTION_FLAG;
-                    moves.push(Move::new(from, to, flag, Some(Piece::BN)));
-                    moves.push(Move::new(from, to, flag, Some(Piece::BB)));
-                    moves.push(Move::new(from, to, flag, Some(Piece::BR)));
-                    moves.push(Move::new(from, to, flag, Some(Piece::BQ)));
+                if is_promotion {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::BN),
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::BB),
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::BR),
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        Some(Piece::BQ),
+                    ));
                 } else {
-                    moves.push(Move::new(from, to, flag, None));
+                    moves.push(Move::new(from, to, CAPTURE_FLAG, None));
                 }
             }
         }
@@ -604,13 +678,6 @@ impl Board {
                 let from = to + 9;
                 moves.push(Move::new(from, to, CAPTURE_FLAG | EN_PASSANT_FLAG, None));
             }
-        }
-    }
-
-    fn get_pawn_moves(&self, moves: &mut Vec<Move>) {
-        match self.side_to_move {
-            Color::White => self.get_white_pawn_moves(moves),
-            Color::Black => self.get_black_pawn_moves(moves),
         }
     }
 
@@ -639,13 +706,13 @@ impl Board {
 
     const KNIGHT_ATTACKS: [u64; 64] = Self::gen_knight_attacks();
 
-    fn get_knight_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let knights_index = match self.side_to_move {
-            Color::White => Piece::WN as usize,
-            Color::Black => Piece::BN as usize,
-        };
-        let mut knights = self.pieces[knights_index];
-
+    fn get_knight_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        mut knights: u64,
+        our_occ: u64,
+        their_occ: u64,
+    ) {
         while knights != 0 {
             let from = knights.trailing_zeros() as u8;
             knights &= knights - 1;
@@ -667,6 +734,7 @@ impl Board {
         }
     }
 
+    #[time_graph::instrument]
     fn gen_sliding_moves(&self, sq: u8, directions: &[i16]) -> u64 {
         let mut result = 0u64;
 
@@ -701,12 +769,13 @@ impl Board {
 
     const BISHOP_DIRECTION_OFFSETS: [i16; 4] = [9, 7, -7, -9];
 
-    fn get_bishop_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let mut bishops = match self.side_to_move {
-            Color::White => self.pieces[Piece::WB as usize],
-            Color::Black => self.pieces[Piece::BB as usize],
-        };
-
+    fn get_bishop_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        mut bishops: u64,
+        our_occ: u64,
+        their_occ: u64,
+    ) {
         while bishops != 0 {
             let from = bishops.trailing_zeros() as u8;
             bishops &= bishops - 1;
@@ -728,12 +797,7 @@ impl Board {
 
     const ROOK_DIRECTION_OFFSETS: [i16; 4] = [8, 1, -1, -8];
 
-    fn get_rook_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let mut rooks = match self.side_to_move {
-            Color::White => self.pieces[Piece::WR as usize],
-            Color::Black => self.pieces[Piece::BR as usize],
-        };
-
+    fn get_rook_moves(&self, moves: &mut Vec<Move>, mut rooks: u64, our_occ: u64, their_occ: u64) {
         while rooks != 0 {
             let from = rooks.trailing_zeros() as u8;
             rooks &= rooks - 1;
@@ -753,12 +817,13 @@ impl Board {
         }
     }
 
-    fn get_queen_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let mut queens = match self.side_to_move {
-            Color::White => self.pieces[Piece::WQ as usize],
-            Color::Black => self.pieces[Piece::BQ as usize],
-        };
-
+    fn get_queen_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        mut queens: u64,
+        our_occ: u64,
+        their_occ: u64,
+    ) {
         const QUEEN_DIRECTION_OFFSETS: [i16; 8] = [9, 8, 7, 1, -1, -7, -8, -9];
 
         while queens != 0 {
@@ -819,11 +884,7 @@ impl Board {
 
     const KING_ATTACKS: [u64; 64] = Self::gen_king_attacks();
 
-    fn get_king_moves(&self, moves: &mut Vec<Move>, our_occ: u64, their_occ: u64) {
-        let king = match self.side_to_move {
-            Color::White => self.pieces[Piece::WK as usize],
-            Color::Black => self.pieces[Piece::BK as usize],
-        };
+    fn get_king_moves(&self, moves: &mut Vec<Move>, king: u64, our_occ: u64, their_occ: u64) {
         let from = king.trailing_zeros() as u8;
 
         // Generate the classical moves
@@ -863,24 +924,88 @@ impl Board {
         }
     }
 
+    #[time_graph::instrument]
     pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
-        let mut moves = Vec::new();
+        let mut moves = Vec::with_capacity(218);
 
-        let (our_occ, their_occ) = match self.side_to_move {
-            Color::White => (self.white_occ, self.black_occ),
-            Color::Black => (self.black_occ, self.white_occ),
-        };
-
-        self.get_pawn_moves(&mut moves);
-        self.get_knight_moves(&mut moves, our_occ, their_occ);
-        self.get_bishop_moves(&mut moves, our_occ, their_occ);
-        self.get_rook_moves(&mut moves, our_occ, their_occ);
-        self.get_queen_moves(&mut moves, our_occ, their_occ);
-        self.get_king_moves(&mut moves, our_occ, their_occ);
+        // Single self.side_to_move match
+        match self.side_to_move {
+            Color::White => {
+                let our_occ = self.white_occ;
+                let their_occ = self.black_occ;
+                self.get_white_pawn_moves(&mut moves);
+                self.get_knight_moves(
+                    &mut moves,
+                    self.pieces[Piece::WN as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_bishop_moves(
+                    &mut moves,
+                    self.pieces[Piece::WB as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_rook_moves(
+                    &mut moves,
+                    self.pieces[Piece::WR as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_queen_moves(
+                    &mut moves,
+                    self.pieces[Piece::WQ as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_king_moves(
+                    &mut moves,
+                    self.pieces[Piece::WK as usize],
+                    our_occ,
+                    their_occ,
+                );
+            }
+            Color::Black => {
+                let our_occ = self.black_occ;
+                let their_occ = self.white_occ;
+                self.get_black_pawn_moves(&mut moves);
+                self.get_knight_moves(
+                    &mut moves,
+                    self.pieces[Piece::BN as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_bishop_moves(
+                    &mut moves,
+                    self.pieces[Piece::BB as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_rook_moves(
+                    &mut moves,
+                    self.pieces[Piece::BR as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_queen_moves(
+                    &mut moves,
+                    self.pieces[Piece::BQ as usize],
+                    our_occ,
+                    their_occ,
+                );
+                self.get_king_moves(
+                    &mut moves,
+                    self.pieces[Piece::BK as usize],
+                    our_occ,
+                    their_occ,
+                );
+            }
+        }
 
         moves
     }
 
+    #[time_graph::instrument]
     fn is_square_attacked(&self, sq: u8, by: Color) -> bool {
         let (pawns, knights, bishops, rooks, queens, king) = match by {
             Color::White => (
@@ -938,7 +1063,8 @@ impl Board {
         false
     }
 
-    fn is_king_checked_for(&self, color: Color) -> bool {
+    #[time_graph::instrument]
+    fn is_king_checked(&self, color: Color) -> bool {
         match color {
             Color::White => self.is_square_attacked(
                 self.pieces[Piece::WK as usize].trailing_zeros() as u8,
@@ -951,6 +1077,7 @@ impl Board {
         }
     }
 
+    #[time_graph::instrument]
     fn is_castle_legal(&self, mv: Move, by: Color) -> bool {
         let through = match mv.to {
             6 => 5,
@@ -968,6 +1095,7 @@ impl Board {
     }
 }
 
+#[time_graph::instrument]
 pub fn perft(board: &mut Board, depth: u8) -> u64 {
     if depth == 0 {
         return 1;
@@ -983,7 +1111,7 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
         let illegal = if m.flags & CASTLING_FLAG != 0 {
             board.is_castle_legal(m, board.side_to_move.flip())
         } else {
-            board.is_king_checked_for(board.side_to_move.flip())
+            board.is_king_checked(board.side_to_move.flip())
         };
         if !illegal {
             nodes += perft(board, depth - 1);
