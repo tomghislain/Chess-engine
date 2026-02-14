@@ -90,8 +90,17 @@ impl Piece {
     }
 }
 
+impl Color {
+    pub fn flip(&self) -> Self {
+        match self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
+}
+
 impl Undo {
-    pub fn new(board: &Board, mv: &Move, captured_piece: Option<Piece>) -> Self {
+    pub fn new(board: &Board, captured_piece: Option<Piece>) -> Self {
         Undo {
             castling: board.castling,
             en_passant: board.en_passant,
@@ -118,19 +127,33 @@ impl Board {
     pub fn new() -> Self {
         let mut pieces = [0u64; 12];
 
-        pieces[Piece::WP as usize] = 0x000000000000FF00;
-        pieces[Piece::WR as usize] = 0x0000000000000081;
-        pieces[Piece::WN as usize] = 0x0000000000000042;
-        pieces[Piece::WB as usize] = 0x0000000000000024;
-        pieces[Piece::WQ as usize] = 0x0000000000000008;
-        pieces[Piece::WK as usize] = 0x0000000000000010;
+        pieces[Piece::WP as usize] = (1 << 8)
+            | (1 << 9)
+            | (1 << 10)
+            | (1 << 11)
+            | (1 << 12)
+            | (1 << 13)
+            | (1 << 14)
+            | (1 << 15);
+        pieces[Piece::WR as usize] = (1 << 0) | (1 << 7);
+        pieces[Piece::WN as usize] = (1 << 1) | (1 << 6);
+        pieces[Piece::WB as usize] = (1 << 2) | (1 << 5);
+        pieces[Piece::WQ as usize] = 1 << 3;
+        pieces[Piece::WK as usize] = 1 << 4;
 
-        pieces[Piece::BP as usize] = 0x00FF000000000000;
-        pieces[Piece::BR as usize] = 0x8100000000000000;
-        pieces[Piece::BN as usize] = 0x4200000000000000;
-        pieces[Piece::BB as usize] = 0x2400000000000000;
-        pieces[Piece::BQ as usize] = 0x0800000000000000;
-        pieces[Piece::BK as usize] = 0x1000000000000000;
+        pieces[Piece::BP as usize] = (1 << 48)
+            | (1 << 49)
+            | (1 << 50)
+            | (1 << 51)
+            | (1 << 52)
+            | (1 << 53)
+            | (1 << 54)
+            | (1 << 55);
+        pieces[Piece::BR as usize] = (1 << 56) | (1 << 63);
+        pieces[Piece::BN as usize] = (1 << 57) | (1 << 62);
+        pieces[Piece::BB as usize] = (1 << 58) | (1 << 61);
+        pieces[Piece::BQ as usize] = 1 << 59;
+        pieces[Piece::BK as usize] = 1 << 60;
 
         let white_occ = pieces[Piece::WP as usize]
             | pieces[Piece::WN as usize]
@@ -211,9 +234,8 @@ impl Board {
             if (mv.flags & EN_PASSANT_FLAG) != 0 {
                 let (c_sq, c_p) = match self.side_to_move {
                     Color::White => (mv.to - 8, Piece::BP),
-                    Color::Black => (mv.to - 8, Piece::WP),
+                    Color::Black => (mv.to + 8, Piece::WP),
                 };
-                assert!(Some(c_p) == self.piece_at(c_sq)); //TODO: remove check
                 self.remove_piece(c_p, c_sq);
                 Some(c_p)
             } else {
@@ -226,7 +248,7 @@ impl Board {
         };
 
         // Once captured piece is computed, create and add undo to undo_stack
-        let undo = Undo::new(self, &mv, captured_piece);
+        let undo = Undo::new(self, captured_piece);
         self.undo_stack.push(undo);
 
         // Move piece from mv.from to mv.to (checking for promotion and castling)
@@ -295,6 +317,28 @@ impl Board {
             _ => (),
         }
 
+        if let Some(piece) = captured_piece {
+            match piece {
+                Piece::WR => {
+                    if mv.to == 63 {
+                        self.castling &= !WK_CASTLE
+                    }
+                    if mv.to == 56 {
+                        self.castling &= !WQ_CASTLE
+                    }
+                }
+                Piece::BR => {
+                    if mv.to == 7 {
+                        self.castling &= !BK_CASTLE
+                    }
+                    if mv.to == 0 {
+                        self.castling &= !BQ_CASTLE
+                    }
+                }
+                _ => (),
+            }
+        }
+
         self.halfmove_clock = if is_capture || is_pawn_move {
             0
         } else {
@@ -346,10 +390,9 @@ impl Board {
             if (mv.flags & EN_PASSANT_FLAG) != 0 {
                 let (c_sq, c_p) = match moved_piece {
                     Piece::WP => (mv.to - 8, Piece::BP),
-                    Piece::BP => (mv.to - 8, Piece::WP),
+                    Piece::BP => (mv.to + 8, Piece::WP),
                     _ => unreachable!(),
                 };
-                assert!(Some(c_p) == self.piece_at(c_sq)); //TODO: remove check
                 self.add_piece(c_p, c_sq);
             } else {
                 self.add_piece(undo.captured_piece.unwrap(), mv.to);
@@ -622,14 +665,18 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
-                let is_capture = (1u64 << to) & their_occ != 0;
+                let flag = if (1u64 << to) & their_occ != 0 {
+                    CAPTURE_FLAG
+                } else {
+                    0
+                };
 
-                moves.push(Move::new(from, to, is_capture as u8, None));
+                moves.push(Move::new(from, to, flag, None));
             }
         }
     }
 
-    fn gen_sliding_moves(&self, sq: u8, directions: &[i16], our_occ: u64, their_occ: u64) -> u64 {
+    fn gen_sliding_moves(&self, sq: u8, directions: &[i16]) -> u64 {
         let mut result = 0u64;
 
         for offset in directions {
@@ -649,16 +696,11 @@ impl Board {
 
                 let next_mask = 1u64 << next;
 
-                if our_occ & next_mask != 0 {
-                    break;
-                }
-
-                if their_occ & next_mask != 0 {
-                    result |= next_mask;
-                    break;
-                }
-
                 result |= next_mask;
+
+                if self.occ & next_mask != 0 {
+                    break;
+                }
 
                 current = next;
             }
@@ -677,8 +719,7 @@ impl Board {
         while bishops != 0 {
             let from = bishops.trailing_zeros() as u8;
             bishops &= bishops - 1;
-            let attacks =
-                self.gen_sliding_moves(from, &Self::BISHOP_DIRECTION_OFFSETS, our_occ, their_occ);
+            let attacks = self.gen_sliding_moves(from, &Self::BISHOP_DIRECTION_OFFSETS) & !our_occ;
             let mut non_captures = attacks & !their_occ;
             let mut captures = attacks & their_occ;
             while non_captures != 0 {
@@ -705,8 +746,7 @@ impl Board {
         while rooks != 0 {
             let from = rooks.trailing_zeros() as u8;
             rooks &= rooks - 1;
-            let attacks =
-                self.gen_sliding_moves(from, &Self::ROOK_DIRECTION_OFFSETS, our_occ, their_occ);
+            let attacks = self.gen_sliding_moves(from, &Self::ROOK_DIRECTION_OFFSETS) & !our_occ;
             let mut non_captures = attacks & !their_occ;
             let mut captures = attacks & their_occ;
             while non_captures != 0 {
@@ -733,8 +773,7 @@ impl Board {
         while queens != 0 {
             let from = queens.trailing_zeros() as u8;
             queens &= queens - 1;
-            let attacks =
-                self.gen_sliding_moves(from, &QUEEN_DIRECTION_OFFSETS, our_occ, their_occ);
+            let attacks = self.gen_sliding_moves(from, &QUEEN_DIRECTION_OFFSETS) & !our_occ;
             let mut non_captures = attacks & !their_occ;
             let mut captures = attacks & their_occ;
             while non_captures != 0 {
@@ -802,16 +841,35 @@ impl Board {
             let to = attacks.trailing_zeros() as u8;
             attacks &= attacks - 1;
 
-            let is_capture = their_occ & (1u64 << to) != 0;
+            let flag = if their_occ & (1u64 << to) != 0 {
+                CAPTURE_FLAG
+            } else {
+                0
+            };
 
-            moves.push(Move::new(from, to, is_capture as u8, None));
+            moves.push(Move::new(from, to, flag, None));
         }
 
         // Generate castling moves
-        // TODO
-
-        // Update castling flags
-        // TODO
+        if self.side_to_move == Color::White {
+            if self.castling & WK_CASTLE != 0 && self.occ & ((1u64 << 5) | (1u64 << 6)) == 0 {
+                moves.push(Move::new(4, 6, CASTLING_FLAG, None));
+            }
+            if self.castling & WQ_CASTLE != 0
+                && self.occ & ((1u64 << 3) | (1u64 << 2) | (1u64 << 1)) == 0
+            {
+                moves.push(Move::new(4, 2, CASTLING_FLAG, None));
+            }
+        } else {
+            if self.castling & BK_CASTLE != 0 && self.occ & ((1u64 << 61) | (1u64 << 62)) == 0 {
+                moves.push(Move::new(60, 62, CASTLING_FLAG, None));
+            }
+            if self.castling & BQ_CASTLE != 0
+                && self.occ & ((1u64 << 59) | (1u64 << 58) | (1u64 << 57)) == 0
+            {
+                moves.push(Move::new(60, 58, CASTLING_FLAG, None));
+            }
+        }
     }
 
     pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
@@ -833,10 +891,8 @@ impl Board {
     }
 
     fn is_square_attacked(&self, sq: u8, by: Color) -> bool {
-        let (our_occ, their_occ, pawns, knights, bishops, rooks, queens, king) = match by {
+        let (pawns, knights, bishops, rooks, queens, king) = match by {
             Color::White => (
-                self.white_occ,
-                self.black_occ,
                 self.pieces[Piece::WP as usize],
                 self.pieces[Piece::WN as usize],
                 self.pieces[Piece::WB as usize],
@@ -845,8 +901,6 @@ impl Board {
                 self.pieces[Piece::WK as usize],
             ),
             Color::Black => (
-                self.black_occ,
-                self.white_occ,
                 self.pieces[Piece::BP as usize],
                 self.pieces[Piece::BN as usize],
                 self.pieces[Piece::BB as usize],
@@ -876,18 +930,12 @@ impl Board {
         }
 
         // Bishop/Queen attacks
-        if (self.gen_sliding_moves(sq, &Self::BISHOP_DIRECTION_OFFSETS, our_occ, their_occ)
-            & (bishops | queens))
-            != 0
-        {
+        if (self.gen_sliding_moves(sq, &Self::BISHOP_DIRECTION_OFFSETS) & (bishops | queens)) != 0 {
             return true;
         }
 
         // Rook/Queen attacks
-        if (self.gen_sliding_moves(sq, &Self::ROOK_DIRECTION_OFFSETS, our_occ, their_occ)
-            & (rooks | queens))
-            != 0
-        {
+        if (self.gen_sliding_moves(sq, &Self::ROOK_DIRECTION_OFFSETS) & (rooks | queens)) != 0 {
             return true;
         }
 
@@ -899,8 +947,8 @@ impl Board {
         false
     }
 
-    fn is_king_checked(&self) -> bool {
-        match self.side_to_move {
+    fn is_king_checked_for(&self, color: Color) -> bool {
+        match color {
             Color::White => self.is_square_attacked(
                 self.pieces[Piece::WK as usize].trailing_zeros() as u8,
                 Color::Black,
@@ -910,6 +958,22 @@ impl Board {
                 Color::White,
             ),
         }
+    }
+
+    fn is_castle_legal(&self, mv: Move, by: Color) -> bool {
+        let through = match mv.to {
+            6 => 5,
+            2 => 3,
+            62 => 61,
+            58 => 59,
+            _ => panic!("Castle check for non castle move"),
+        };
+
+        let enemy = by.flip();
+
+        self.is_square_attacked(mv.from, enemy)
+            || self.is_square_attacked(through, enemy)
+            || self.is_square_attacked(mv.to, enemy)
     }
 }
 
@@ -922,12 +986,19 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
     let moves = board.get_pseudo_legal_moves();
 
     for m in moves {
-        println!("Making move at depth {}: {:?}", depth, m);
+        // println!("Making move at depth {}: {:?}", depth, m);
         board.make_move(m);
-        if !board.is_king_checked() {
+
+        let illegal = if m.flags & CASTLING_FLAG != 0 {
+            board.is_castle_legal(m, board.side_to_move.flip())
+        } else {
+            board.is_king_checked_for(board.side_to_move.flip())
+        };
+        if !illegal {
             nodes += perft(board, depth - 1);
         }
-        println!("Unmaking move at depth {}: {:?}", depth, m);
+
+        // println!("Unmaking move at depth {}: {:?}", depth, m);
         board.unmake_move(m);
     }
     nodes
