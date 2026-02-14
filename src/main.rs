@@ -23,7 +23,7 @@ fn main() {
     // let moves = board.get_pseudo_legal_moves();
 
     // See the number of moves at after a given depth
-    let depth = 5;
+    let depth = 6;
     println!(
         "Number of moves at depth {}: {}",
         depth,

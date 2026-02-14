@@ -260,10 +260,10 @@ impl Board {
             self.move_piece(moved_piece, mv.from, mv.to);
             if (mv.flags & CASTLING_FLAG) != 0 {
                 match mv.to {
-                    62 => self.move_piece(Piece::WR, 63, 61), // white king side
-                    58 => self.move_piece(Piece::WR, 56, 59), // white queen side
-                    6 => self.move_piece(Piece::BR, 7, 5),    // black king side
-                    2 => self.move_piece(Piece::BR, 0, 3),    // black queen side
+                    62 => self.move_piece(Piece::BR, 63, 61), // black king side
+                    58 => self.move_piece(Piece::BR, 56, 59), // black queen side
+                    6 => self.move_piece(Piece::WR, 7, 5),    // white king side
+                    2 => self.move_piece(Piece::WR, 0, 3),    // white queen side
                     _ => unreachable!(),
                 }
             }
@@ -288,29 +288,28 @@ impl Board {
         self.occ = self.white_occ | self.black_occ;
 
         let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
-        let file = mv.from % 8;
         self.en_passant = if is_pawn_move && ((mv.from as i16 - mv.to as i16).abs() == 16) {
-            1 << file
+            (mv.from + mv.to) / 2
         } else {
-            0
+            64
         };
 
         match moved_piece {
             Piece::WK => self.castling &= !(WK_CASTLE | WQ_CASTLE),
             Piece::BK => self.castling &= !(BK_CASTLE | BQ_CASTLE),
             Piece::WR => {
-                if mv.from == 63 {
+                if mv.from == 7 {
                     self.castling &= !WK_CASTLE
                 }
-                if mv.from == 56 {
+                if mv.from == 0 {
                     self.castling &= !WQ_CASTLE
                 }
             }
             Piece::BR => {
-                if mv.from == 7 {
+                if mv.from == 63 {
                     self.castling &= !BK_CASTLE
                 }
-                if mv.from == 0 {
+                if mv.from == 56 {
                     self.castling &= !BQ_CASTLE
                 }
             }
@@ -320,18 +319,18 @@ impl Board {
         if let Some(piece) = captured_piece {
             match piece {
                 Piece::WR => {
-                    if mv.to == 63 {
+                    if mv.to == 7 {
                         self.castling &= !WK_CASTLE
                     }
-                    if mv.to == 56 {
+                    if mv.to == 0 {
                         self.castling &= !WQ_CASTLE
                     }
                 }
                 Piece::BR => {
-                    if mv.to == 7 {
+                    if mv.to == 63 {
                         self.castling &= !BK_CASTLE
                     }
-                    if mv.to == 0 {
+                    if mv.to == 56 {
                         self.castling &= !BQ_CASTLE
                     }
                 }
@@ -377,10 +376,10 @@ impl Board {
             self.move_piece(moved_piece, mv.to, mv.from);
             if (mv.flags & CASTLING_FLAG) != 0 {
                 match mv.to {
-                    62 => self.move_piece(Piece::WR, 61, 63), // white king side
-                    58 => self.move_piece(Piece::WR, 59, 56), // white queen side
-                    6 => self.move_piece(Piece::BR, 5, 7),    // black king side
-                    2 => self.move_piece(Piece::BR, 3, 0),    // black queen side
+                    62 => self.move_piece(Piece::BR, 61, 63), // white king side
+                    58 => self.move_piece(Piece::BR, 59, 56), // white queen side
+                    6 => self.move_piece(Piece::WR, 5, 7),    // black king side
+                    2 => self.move_piece(Piece::WR, 3, 0),    // black queen side
                     _ => unreachable!(),
                 }
             }
@@ -436,7 +435,7 @@ impl Board {
 
     const WHITE_PAWN_ATTACKS: [u64; 64] = Self::gen_white_pawn_attacks();
 
-    fn get_white_pawn_moves(&self, moves: &mut Vec<Move>, their_occ: u64) {
+    fn get_white_pawn_moves(&self, moves: &mut Vec<Move>) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
 
@@ -447,10 +446,10 @@ impl Board {
             single_push &= single_push - 1;
             let from = to - 8;
             if (56..64).contains(&(to as i32)) {
-                moves.push(Move::new(from, to, 0, Some(Piece::WN)));
-                moves.push(Move::new(from, to, 0, Some(Piece::WB)));
-                moves.push(Move::new(from, to, 0, Some(Piece::WR)));
-                moves.push(Move::new(from, to, 0, Some(Piece::WQ)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WN)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WB)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WR)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WQ)));
             } else {
                 moves.push(Move::new(from, to, 0, None));
             }
@@ -458,8 +457,8 @@ impl Board {
 
         // Double pushes
         let rank2: u64 = 0x000000000000FF00;
-        let mut double_push = ((pawns & rank2) << 8) & empty;
-        double_push = (double_push << 8) & empty;
+        let first_push = ((pawns & rank2) << 8) & empty;
+        let mut double_push = (first_push << 8) & empty;
         while double_push != 0 {
             let to = double_push.trailing_zeros() as u8;
             double_push &= double_push - 1;
@@ -468,38 +467,34 @@ impl Board {
         }
 
         // Captures
-        let mut left_captures = ((pawns << 7) & !FILE_H) & their_occ;
-        while left_captures != 0 {
-            let to = left_captures.trailing_zeros() as u8;
-            left_captures &= left_captures - 1;
-            let from = to - 7;
-            if (56..64).contains(&(to as i32)) {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
-            } else {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
-            }
-        }
-        let mut right_captures = ((pawns << 9) & !FILE_A) & their_occ;
-        while right_captures != 0 {
-            let to = right_captures.trailing_zeros() as u8;
-            right_captures &= right_captures - 1;
-            let from = to - 9;
-            if (56..64).contains(&(to as i32)) {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
-            } else {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+        let mut captures = pawns;
+        while captures != 0 {
+            let from = captures.trailing_zeros() as u8;
+            captures &= captures - 1;
+
+            let mut attacks = Self::WHITE_PAWN_ATTACKS[from as usize] & self.black_occ;
+
+            while attacks != 0 {
+                let to = attacks.trailing_zeros() as u8;
+                attacks &= attacks - 1;
+
+                let mut flag = CAPTURE_FLAG;
+
+                if (56..64).contains(&(to as i32)) {
+                    flag |= PROMOTION_FLAG;
+                    moves.push(Move::new(from, to, flag, Some(Piece::WN)));
+                    moves.push(Move::new(from, to, flag, Some(Piece::WB)));
+                    moves.push(Move::new(from, to, flag, Some(Piece::WR)));
+                    moves.push(Move::new(from, to, flag, Some(Piece::WQ)));
+                } else {
+                    moves.push(Move::new(from, to, flag, None));
+                }
             }
         }
 
         // En passant
-        let en_passant_mask = (self.en_passant as u64) << 40;
-        if en_passant_mask != 0 {
+        let en_passant_mask = 1 << self.en_passant;
+        if self.en_passant < 64 {
             let mut left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
             while left_en_passant != 0 {
                 let to = left_en_passant.trailing_zeros() as u8;
@@ -535,7 +530,7 @@ impl Board {
 
     const BLACK_PAWN_ATTACKS: [u64; 64] = Self::gen_black_pawn_attacks();
 
-    fn get_black_pawn_moves(&self, moves: &mut Vec<Move>, their_occ: u64) {
+    fn get_black_pawn_moves(&self, moves: &mut Vec<Move>) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
 
@@ -546,10 +541,10 @@ impl Board {
             single_push &= single_push - 1;
             let from = to + 8;
             if (0..8).contains(&(to as i32)) {
-                moves.push(Move::new(from, to, 0, Some(Piece::WN)));
-                moves.push(Move::new(from, to, 0, Some(Piece::WB)));
-                moves.push(Move::new(from, to, 0, Some(Piece::WR)));
-                moves.push(Move::new(from, to, 0, Some(Piece::WQ)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BN)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BB)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BR)));
+                moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BQ)));
             } else {
                 moves.push(Move::new(from, to, 0, None));
             }
@@ -557,8 +552,8 @@ impl Board {
 
         // Double pushes
         let rank7: u64 = 0x00FF000000000000;
-        let mut double_push = ((pawns & rank7) >> 8) & empty;
-        double_push = (double_push >> 8) & empty;
+        let first_push = ((pawns & rank7) >> 8) & empty;
+        let mut double_push = (first_push >> 8) & empty;
         while double_push != 0 {
             let to = double_push.trailing_zeros() as u8;
             double_push &= double_push - 1;
@@ -567,38 +562,34 @@ impl Board {
         }
 
         // Captures
-        let mut left_captures = ((pawns >> 7) & !FILE_A) & their_occ;
-        while left_captures != 0 {
-            let to = left_captures.trailing_zeros() as u8;
-            left_captures &= left_captures - 1;
-            let from = to + 7;
-            if (0..8).contains(&(to as i32)) {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
-            } else {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
-            }
-        }
-        let mut right_captures = ((pawns >> 9) & !FILE_H) & their_occ;
-        while right_captures != 0 {
-            let to = right_captures.trailing_zeros() as u8;
-            right_captures &= right_captures - 1;
-            let from = to + 9;
-            if (0..8).contains(&(to as i32)) {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WN)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WB)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WR)));
-                moves.push(Move::new(from, to, CAPTURE_FLAG, Some(Piece::WQ)));
-            } else {
-                moves.push(Move::new(from, to, CAPTURE_FLAG, None));
+        let mut captures = pawns;
+        while captures != 0 {
+            let from = captures.trailing_zeros() as u8;
+            captures &= captures - 1;
+
+            let mut attacks = Self::BLACK_PAWN_ATTACKS[from as usize] & self.white_occ;
+
+            while attacks != 0 {
+                let to = attacks.trailing_zeros() as u8;
+                attacks &= attacks - 1;
+
+                let mut flag = CAPTURE_FLAG;
+
+                if (0..8).contains(&(to as i32)) {
+                    flag |= PROMOTION_FLAG;
+                    moves.push(Move::new(from, to, flag, Some(Piece::BN)));
+                    moves.push(Move::new(from, to, flag, Some(Piece::BB)));
+                    moves.push(Move::new(from, to, flag, Some(Piece::BR)));
+                    moves.push(Move::new(from, to, flag, Some(Piece::BQ)));
+                } else {
+                    moves.push(Move::new(from, to, flag, None));
+                }
             }
         }
 
         // En passant
-        let en_passant_mask = (self.en_passant as u64) << 16;
-        if en_passant_mask != 0 {
+        let en_passant_mask = 1 << self.en_passant;
+        if self.en_passant < 64 {
             let mut left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
             while left_en_passant != 0 {
                 let to = left_en_passant.trailing_zeros() as u8;
@@ -616,10 +607,10 @@ impl Board {
         }
     }
 
-    fn get_pawn_moves(&self, moves: &mut Vec<Move>, their_occ: u64) {
+    fn get_pawn_moves(&self, moves: &mut Vec<Move>) {
         match self.side_to_move {
-            Color::White => self.get_white_pawn_moves(moves, their_occ),
-            Color::Black => self.get_black_pawn_moves(moves, their_occ),
+            Color::White => self.get_white_pawn_moves(moves),
+            Color::Black => self.get_black_pawn_moves(moves),
         }
     }
 
@@ -880,7 +871,7 @@ impl Board {
             Color::Black => (self.black_occ, self.white_occ),
         };
 
-        self.get_pawn_moves(&mut moves, their_occ);
+        self.get_pawn_moves(&mut moves);
         self.get_knight_moves(&mut moves, our_occ, their_occ);
         self.get_bishop_moves(&mut moves, our_occ, their_occ);
         self.get_rook_moves(&mut moves, our_occ, their_occ);
@@ -913,12 +904,12 @@ impl Board {
         // Pawn attacks
         match by {
             Color::White => {
-                if (Self::WHITE_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
+                if (Self::BLACK_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
                     return true;
                 }
             }
             Color::Black => {
-                if (Self::BLACK_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
+                if (Self::WHITE_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
                     return true;
                 }
             }
