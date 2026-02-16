@@ -19,20 +19,16 @@ impl std::fmt::Display for PlayerType {
 
 fn main() {
     // Perft debug
-    time_graph::enable_data_collection(true);
     let mut board = game::Board::new();
     // let moves = board.get_pseudo_legal_moves();
 
     // See the number of moves at after a given depth
-    let depth = 5;
+    let depth = 6;
     println!(
         "Number of moves at depth {}: {}",
         depth,
         game::perft(&mut board, depth)
     );
-    let graph = time_graph::get_full_graph();
-    println!("{}", graph.as_table());
-
     // Play a sequence of moves, then see what moves are playable
     // let first_move = game::Move::new(11, 27, 0, None);
     // board.make_move(first_move);

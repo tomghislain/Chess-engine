@@ -220,52 +220,30 @@ impl Board {
         self.pieces[p as usize] ^= mask;
     }
 
-    #[time_graph::instrument]
     pub fn make_move(&mut self, mv: Move) {
         let is_capture = mv.flags & CAPTURE_FLAG != 0;
         let is_en_passant = mv.flags & EN_PASSANT_FLAG != 0;
         let is_promotion = mv.flags & PROMOTION_FLAG != 0;
         let is_castling = mv.flags & CASTLING_FLAG != 0;
-
+        let mut moving_side_mask = 0u64;
+        let mut opponent_side_mask = 0u64;
         let us = self.side_to_move;
 
         // Remove piece if capture
         let captured_piece = if is_capture {
-            if is_en_passant {
-                let ep_sq = if us == Color::White {
-                    mv.to - 8
-                } else {
-                    mv.to + 8
-                };
-                let ep_p = if us == Color::White {
-                    Piece::BP
-                } else {
-                    Piece::WP
-                };
-                self.remove_piece(ep_p, ep_sq);
-
-                let mask = 1u64 << ep_sq;
-                self.occ ^= mask;
+            let (c_sq, c_p) = if is_en_passant {
                 if us == Color::White {
-                    self.black_occ ^= mask;
+                    (mv.to - 8, Piece::BP)
                 } else {
-                    self.white_occ ^= mask;
+                    (mv.to + 8, Piece::WP)
                 }
-
-                Some(ep_p)
             } else {
-                let c_p = self.piece_at(mv.to).unwrap();
-                self.remove_piece(c_p, mv.to);
-
-                let mask = 1u64 << mv.to;
-                self.occ ^= mask;
-                if us == Color::White {
-                    self.black_occ ^= mask;
-                } else {
-                    self.white_occ ^= mask;
-                }
-                Some(c_p)
-            }
+                (mv.to, self.piece_at(mv.to).unwrap())
+            };
+            self.remove_piece(c_p, c_sq);
+            let mask = 1u64 << c_sq;
+            opponent_side_mask |= mask;
+            Some(c_p)
         } else {
             None
         };
@@ -277,12 +255,7 @@ impl Board {
         // Move the played piece (plus rook for castling)
         let moved_piece = self.piece_at(mv.from).unwrap();
         let moved_mask = (1u64 << mv.from) | (1u64 << mv.to);
-        self.occ ^= moved_mask;
-        if us == Color::White {
-            self.white_occ ^= moved_mask;
-        } else {
-            self.black_occ ^= moved_mask;
-        }
+        moving_side_mask |= moved_mask;
 
         if is_promotion {
             self.remove_piece(moved_piece, mv.from);
@@ -303,12 +276,20 @@ impl Board {
                 self.move_piece(rook, rook_from, rook_to);
 
                 let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
-                self.occ ^= rook_mask;
-                if us == Color::White {
-                    self.white_occ ^= rook_mask;
-                } else {
-                    self.black_occ ^= rook_mask;
-                }
+                moving_side_mask |= rook_mask;
+            }
+        }
+
+        // Update occupancy
+        self.occ ^= moving_side_mask ^ opponent_side_mask;
+        match self.side_to_move {
+            Color::White => {
+                self.white_occ ^= moving_side_mask;
+                self.black_occ ^= opponent_side_mask;
+            }
+            Color::Black => {
+                self.black_occ ^= moving_side_mask;
+                self.white_occ ^= opponent_side_mask;
             }
         }
 
@@ -366,7 +347,6 @@ impl Board {
         }
 
         // Update halfmove clock
-
         self.halfmove_clock = if is_capture || is_pawn_move {
             0
         } else {
@@ -377,7 +357,6 @@ impl Board {
         self.side_to_move = self.side_to_move.flip();
     }
 
-    #[time_graph::instrument]
     fn unmake_move(&mut self, mv: Move) {
         // Pop undo stack and restore previous state
         let undo = self.undo_stack.pop().unwrap();
@@ -391,11 +370,11 @@ impl Board {
         let is_en_passant = mv.flags & EN_PASSANT_FLAG != 0;
         let is_castling = mv.flags & CASTLING_FLAG != 0;
         let is_promotion = mv.flags & PROMOTION_FLAG != 0;
-        let mut our_occ_mask: u64 = 0;
-        let mut their_occ_mask: u64 = 0;
+        let mut moving_side_mask: u64 = 0;
+        let mut opponent_side_mask: u64 = 0;
 
         // Move back the piece (checking for promotion and castling)
-        our_occ_mask |= (1u64 << mv.to) | (1u64 << mv.from);
+        moving_side_mask |= (1u64 << mv.to) | (1u64 << mv.from);
         if is_promotion {
             let promoted_piece = mv.promotion.unwrap();
             self.remove_piece(promoted_piece, mv.to);
@@ -424,7 +403,7 @@ impl Board {
                 self.move_piece(rook, rook_from, rook_to);
 
                 let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
-                our_occ_mask |= rook_mask;
+                moving_side_mask |= rook_mask;
             }
         }
 
@@ -439,20 +418,20 @@ impl Board {
                 mv.to
             };
             let sq_mask = 1u64 << sq;
-            their_occ_mask |= sq_mask;
+            opponent_side_mask |= sq_mask;
             self.add_piece(undo.captured_piece.unwrap(), sq);
         }
 
         // Recompute occupancy
-        self.occ ^= our_occ_mask ^ their_occ_mask;
+        self.occ ^= moving_side_mask ^ opponent_side_mask;
         match self.side_to_move {
             Color::White => {
-                self.white_occ ^= our_occ_mask;
-                self.black_occ ^= their_occ_mask;
+                self.white_occ ^= moving_side_mask;
+                self.black_occ ^= opponent_side_mask;
             }
             Color::Black => {
-                self.black_occ ^= our_occ_mask;
-                self.white_occ ^= their_occ_mask;
+                self.black_occ ^= moving_side_mask;
+                self.white_occ ^= opponent_side_mask;
             }
         }
     }
@@ -478,7 +457,6 @@ impl Board {
     fn get_white_pawn_moves(&self, moves: &mut Vec<Move>) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
-        let is_promotion = pawns & RANK_7 != 0;
 
         // Single pushes
         let mut single_push = (pawns << 8) & empty;
@@ -486,6 +464,7 @@ impl Board {
             let to = single_push.trailing_zeros() as u8;
             single_push &= single_push - 1;
             let from = to - 8;
+            let is_promotion = to > 55;
             if is_promotion {
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WN)));
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::WB)));
@@ -518,6 +497,7 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
+                let is_promotion = to > 55;
                 if is_promotion {
                     moves.push(Move::new(
                         from,
@@ -590,7 +570,6 @@ impl Board {
     fn get_black_pawn_moves(&self, moves: &mut Vec<Move>) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
-        let is_promotion = pawns & RANK_2 != 0;
 
         // Single pushes
         let mut single_push = (pawns >> 8) & empty;
@@ -598,6 +577,7 @@ impl Board {
             let to = single_push.trailing_zeros() as u8;
             single_push &= single_push - 1;
             let from = to + 8;
+            let is_promotion = to < 8;
             if is_promotion {
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BN)));
                 moves.push(Move::new(from, to, PROMOTION_FLAG, Some(Piece::BB)));
@@ -630,6 +610,7 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
+                let is_promotion = to < 8;
                 if is_promotion {
                     moves.push(Move::new(
                         from,
@@ -734,40 +715,118 @@ impl Board {
         }
     }
 
-    #[time_graph::instrument]
-    fn gen_sliding_moves(&self, sq: u8, directions: &[i16]) -> u64 {
-        let mut result = 0u64;
+    const DIR_N: usize = 0;
+    const DIR_NE: usize = 1;
+    const DIR_E: usize = 2;
+    const DIR_SE: usize = 3;
+    const DIR_S: usize = 4;
+    const DIR_SW: usize = 5;
+    const DIR_W: usize = 6;
+    const DIR_NW: usize = 7;
 
-        for offset in directions {
-            let mut current = sq as i16;
-            loop {
-                let next = current + offset;
+    const fn compute_rays() -> [[u64; 64]; 8] {
+        let mut rays = [[0; 64]; 8];
+        let mut sq = 0;
+        while sq < 64 {
+            let r = sq / 8;
+            let f = sq % 8;
 
-                // Bound and wraparound checks
-                if !(0..64).contains(&next)
-                        // Check if file differs by more than 1
-                        || ((next & 7) - (current & 7)).abs() > 1
-                        // Check if rank differs by more than 1
-                        || ((next >> 3) - (current >> 3)).abs() > 1
-                {
-                    break;
-                }
-
-                let next_mask = 1u64 << next;
-
-                result |= next_mask;
-
-                if self.occ & next_mask != 0 {
-                    break;
-                }
-
-                current = next;
+            let mut i = r + 1;
+            while i < 8 {
+                let target = i * 8 + f;
+                rays[Self::DIR_N][sq] |= 1 << target;
+                i += 1;
             }
+
+            let mut i = r as i8 - 1;
+            while i >= 0 {
+                let target = i as usize * 8 + f;
+                rays[Self::DIR_S][sq] |= 1 << target;
+                i -= 1;
+            }
+
+            let mut j = f + 1;
+            while j < 8 {
+                let target = r * 8 + j;
+                rays[Self::DIR_E][sq] |= 1 << target;
+                j += 1;
+            }
+
+            let mut j = f as i8 - 1;
+            while j >= 0 {
+                let target = r * 8 + j as usize;
+                rays[Self::DIR_W][sq] |= 1 << target;
+                j -= 1;
+            }
+
+            let mut i = r + 1;
+            let mut j = f + 1;
+            while i < 8 && j < 8 {
+                let target = i * 8 + j;
+                rays[Self::DIR_NE][sq] |= 1 << target;
+                i += 1;
+                j += 1;
+            }
+
+            let mut i = r + 1;
+            let mut j = f as i8 - 1;
+            while i < 8 && j >= 0 {
+                let target = i * 8 + j as usize;
+                rays[Self::DIR_NW][sq] |= 1 << target;
+                i += 1;
+                j -= 1;
+            }
+
+            let mut i = r as i8 - 1;
+            let mut j = f + 1;
+            while i >= 0 && j < 8 {
+                let target = i as usize * 8 + j;
+                rays[Self::DIR_SE][sq] |= 1 << target;
+                i -= 1;
+                j += 1;
+            }
+
+            let mut i = r as i8 - 1;
+            let mut j = f as i8 - 1;
+            while i >= 0 && j >= 0 {
+                let target = i as usize * 8 + j as usize;
+                rays[Self::DIR_SW][sq] |= 1 << target;
+                i -= 1;
+                j -= 1;
+            }
+
+            sq += 1;
         }
-        result
+
+        rays
     }
 
-    const BISHOP_DIRECTION_OFFSETS: [i16; 4] = [9, 7, -7, -9];
+    const RAYS: [[u64; 64]; 8] = Self::compute_rays();
+
+    const fn dir_is_pos(d: usize) -> bool {
+        matches!(d, Self::DIR_N | Self::DIR_NE | Self::DIR_E | Self::DIR_NW)
+    }
+
+    fn gen_sliding_moves(&self, sq: u8, directions: &[usize]) -> u64 {
+        let mut attacks = 0u64;
+        for dir in directions {
+            let ray = Self::RAYS[*dir][sq as usize];
+            let blockers = ray & self.occ;
+            if blockers == 0 {
+                attacks |= ray;
+            } else {
+                let first_blocker_sq = if Self::dir_is_pos(*dir) {
+                    blockers.trailing_zeros() as u8
+                } else {
+                    (63 - blockers.leading_zeros()) as u8
+                };
+                attacks |= ray & !(Self::RAYS[*dir][first_blocker_sq as usize]);
+            }
+        }
+        attacks
+    }
+
+    const BISHOP_DIRECTIONS: [usize; 4] = [Self::DIR_SW, Self::DIR_SE, Self::DIR_NW, Self::DIR_NE];
 
     fn get_bishop_moves(
         &self,
@@ -779,7 +838,7 @@ impl Board {
         while bishops != 0 {
             let from = bishops.trailing_zeros() as u8;
             bishops &= bishops - 1;
-            let attacks = self.gen_sliding_moves(from, &Self::BISHOP_DIRECTION_OFFSETS) & !our_occ;
+            let attacks = self.gen_sliding_moves(from, &Self::BISHOP_DIRECTIONS) & !our_occ;
             let mut non_captures = attacks & !their_occ;
             let mut captures = attacks & their_occ;
             while non_captures != 0 {
@@ -795,13 +854,13 @@ impl Board {
         }
     }
 
-    const ROOK_DIRECTION_OFFSETS: [i16; 4] = [8, 1, -1, -8];
+    const ROOK_DIRECTIONS: [usize; 4] = [Self::DIR_N, Self::DIR_S, Self::DIR_W, Self::DIR_E];
 
     fn get_rook_moves(&self, moves: &mut Vec<Move>, mut rooks: u64, our_occ: u64, their_occ: u64) {
         while rooks != 0 {
             let from = rooks.trailing_zeros() as u8;
             rooks &= rooks - 1;
-            let attacks = self.gen_sliding_moves(from, &Self::ROOK_DIRECTION_OFFSETS) & !our_occ;
+            let attacks = self.gen_sliding_moves(from, &Self::ROOK_DIRECTIONS) & !our_occ;
             let mut non_captures = attacks & !their_occ;
             let mut captures = attacks & their_occ;
             while non_captures != 0 {
@@ -824,12 +883,21 @@ impl Board {
         our_occ: u64,
         their_occ: u64,
     ) {
-        const QUEEN_DIRECTION_OFFSETS: [i16; 8] = [9, 8, 7, 1, -1, -7, -8, -9];
+        const QUEEN_DIRECTIONS: [usize; 8] = [
+            Board::DIR_N,
+            Board::DIR_NE,
+            Board::DIR_E,
+            Board::DIR_SE,
+            Board::DIR_S,
+            Board::DIR_SW,
+            Board::DIR_W,
+            Board::DIR_NW,
+        ];
 
         while queens != 0 {
             let from = queens.trailing_zeros() as u8;
             queens &= queens - 1;
-            let attacks = self.gen_sliding_moves(from, &QUEEN_DIRECTION_OFFSETS) & !our_occ;
+            let attacks = self.gen_sliding_moves(from, &QUEEN_DIRECTIONS) & !our_occ;
             let mut non_captures = attacks & !their_occ;
             let mut captures = attacks & their_occ;
             while non_captures != 0 {
@@ -924,7 +992,6 @@ impl Board {
         }
     }
 
-    #[time_graph::instrument]
     pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(218);
 
@@ -1005,7 +1072,6 @@ impl Board {
         moves
     }
 
-    #[time_graph::instrument]
     fn is_square_attacked(&self, sq: u8, by: Color) -> bool {
         let (pawns, knights, bishops, rooks, queens, king) = match by {
             Color::White => (
@@ -1046,13 +1112,35 @@ impl Board {
         }
 
         // Bishop/Queen attacks
-        if (self.gen_sliding_moves(sq, &Self::BISHOP_DIRECTION_OFFSETS) & (bishops | queens)) != 0 {
-            return true;
+        for &dir in &Self::BISHOP_DIRECTIONS {
+            let ray = Self::RAYS[dir][sq as usize];
+            let blockers = ray & self.occ;
+            if blockers != 0 {
+                let first = if Self::dir_is_pos(dir) {
+                    blockers.trailing_zeros() as u8
+                } else {
+                    (63 - blockers.leading_zeros()) as u8
+                };
+                if (1u64 << first) & (bishops | queens) != 0 {
+                    return true;
+                }
+            }
         }
 
         // Rook/Queen attacks
-        if (self.gen_sliding_moves(sq, &Self::ROOK_DIRECTION_OFFSETS) & (rooks | queens)) != 0 {
-            return true;
+        for &dir in &Self::ROOK_DIRECTIONS {
+            let ray = Self::RAYS[dir][sq as usize];
+            let blockers = ray & self.occ;
+            if blockers != 0 {
+                let first = if Self::dir_is_pos(dir) {
+                    blockers.trailing_zeros() as u8
+                } else {
+                    (63 - blockers.leading_zeros()) as u8
+                };
+                if (1u64 << first) & (rooks | queens) != 0 {
+                    return true;
+                }
+            }
         }
 
         // King attacks
@@ -1063,7 +1151,6 @@ impl Board {
         false
     }
 
-    #[time_graph::instrument]
     fn is_king_checked(&self, color: Color) -> bool {
         match color {
             Color::White => self.is_square_attacked(
@@ -1077,7 +1164,6 @@ impl Board {
         }
     }
 
-    #[time_graph::instrument]
     fn is_castle_legal(&self, mv: Move, by: Color) -> bool {
         let through = match mv.to {
             6 => 5,
@@ -1095,7 +1181,6 @@ impl Board {
     }
 }
 
-#[time_graph::instrument]
 pub fn perft(board: &mut Board, depth: u8) -> u64 {
     if depth == 0 {
         return 1;

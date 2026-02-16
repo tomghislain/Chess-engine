@@ -3,4 +3,12 @@ name = "chess_engine"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+codegen-units = 1
+lto = "fat"
+
+[build]
+rustflags = ["-C", "target-cpu=native"]
+
 [dependencies]
+time-graph = {version = "0.3.3", features = ["table"]}
