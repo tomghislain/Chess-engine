@@ -194,7 +194,7 @@ impl Board {
             undo_stack,
         }
     }
-    fn piece_at(&self, sq: u8) -> Option<Piece> {
+    pub fn piece_at(&self, sq: u8) -> Option<Piece> {
         let mask = 1 << sq;
 
         Piece::PIECE_LIST
@@ -530,8 +530,8 @@ impl Board {
         }
 
         // En passant
-        let en_passant_mask = 1 << self.en_passant;
         if self.en_passant < 64 {
+            let en_passant_mask = 1 << self.en_passant;
             let mut left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
             while left_en_passant != 0 {
                 let to = left_en_passant.trailing_zeros() as u8;
@@ -643,8 +643,8 @@ impl Board {
         }
 
         // En passant
-        let en_passant_mask = 1 << self.en_passant;
         if self.en_passant < 64 {
+            let en_passant_mask = 1 << self.en_passant;
             let mut left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
             while left_en_passant != 0 {
                 let to = left_en_passant.trailing_zeros() as u8;
@@ -1206,4 +1206,23 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
         board.unmake_move(m);
     }
     nodes
+}
+
+pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
+    let pseudo_legal_moves = board.get_pseudo_legal_moves();
+    let mut legal_moves = Vec::new();
+    for mv in pseudo_legal_moves {
+        board.make_move(mv);
+        let illegal = if mv.flags & CASTLING_FLAG != 0 {
+            board.is_castle_legal(mv, board.side_to_move.flip())
+        } else {
+            board.is_king_checked(board.side_to_move.flip())
+        };
+        if !illegal {
+            legal_moves.push(mv);
+        }
+        board.unmake_move(mv);
+    }
+
+    legal_moves
 }

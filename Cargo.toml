@@ -6,9 +6,11 @@ edition = "2024"
 [profile.release]
 codegen-units = 1
 lto = "fat"
+# debug = true
 
 [build]
 rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
+crossterm = "0.29.0"
 time-graph = {version = "0.3.3", features = ["table"]}
