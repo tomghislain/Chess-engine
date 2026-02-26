@@ -42,10 +42,10 @@ pub struct Undo {
     pub zobrist: u64,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, PartialEq, Clone, Debug)]
 pub struct Move {
-    from: u8,
-    to: u8,
+    pub from: u8,
+    pub to: u8,
     flags: u8,
     promotion: Option<Piece>,
 }
@@ -954,6 +954,7 @@ impl Board {
 
     fn get_king_moves(&self, moves: &mut Vec<Move>, king: u64, our_occ: u64, their_occ: u64) {
         let from = king.trailing_zeros() as u8;
+        debug_assert!(from <= 64);
 
         // Generate the classical moves
         let mut attacks = Self::KING_ATTACKS[from as usize] & !our_occ;

@@ -19,39 +19,46 @@ impl std::fmt::Display for PlayerType {
 }
 
 impl PlayerType {
-    fn get_move(&self, board: &mut game::Board) -> game::Move {
+    fn get_move(
+        &self,
+        board: &mut game::Board,
+        previous_move_squares: Option<(u8, u8)>,
+    ) -> game::Move {
         match self {
-            PlayerType::Input => gui::get_player_move(board),
+            PlayerType::Input => gui::get_player_move(board, previous_move_squares),
             _ => board.get_pseudo_legal_moves()[0],
         }
     }
 }
 
 fn main() {
-    // Ask the user to choose the PlayerType of white and black
-    let (white_player, black_player) = get_player_types();
-    println!("Starting game with white ({white_player}) vs black ({black_player})");
-
+    play_single_game();
     // Initialize the board
-    let mut board = game::Board::new();
     // let depth = 5;
     // println!(
     //     "Number of moves at depth {}: {}",
     //     depth,
     //     game::perft(&mut board, depth)
     // );
+}
 
-    // Game Loop
+fn play_single_game() {
+    // Ask the user to choose the PlayerType of white and black
+    let (white_player, black_player) = get_player_types();
+    println!("Starting game with white ({white_player}) vs black ({black_player})");
+
+    let mut board = game::Board::new();
+    let mut mv = game::Move::new(65, 65, 0, None);
     for i in (0..).step_by(2) {
         let _ = crossterm::terminal::enable_raw_mode();
-        gui::display_board(&board);
-        let mv = white_player.get_move(&mut board);
+        gui::display_board(&board, None, None, Vec::new());
+        mv = white_player.get_move(&mut board, Some((mv.from, mv.to)));
         let _ = crossterm::terminal::disable_raw_mode();
         println!("Making move {i}");
         board.make_move(mv);
         let _ = crossterm::terminal::enable_raw_mode();
-        gui::display_board(&board);
-        let mv = black_player.get_move(&mut board);
+        gui::display_board(&board, None, None, Vec::new());
+        mv = black_player.get_move(&mut board, Some((mv.from, mv.to)));
         let _ = crossterm::terminal::disable_raw_mode();
         println!("Making move {}", i + 1);
         board.make_move(mv);
