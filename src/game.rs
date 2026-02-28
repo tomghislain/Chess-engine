@@ -47,7 +47,7 @@ pub struct Move {
     pub from: u8,
     pub to: u8,
     flags: u8,
-    promotion: Option<Piece>,
+    pub promotion: Option<Piece>,
 }
 
 pub struct Board {

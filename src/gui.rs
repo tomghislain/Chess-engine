@@ -1,5 +1,5 @@
 use crate::game;
-use crossterm::{cursor, event, execute, queue, style, terminal};
+use crossterm::{cursor, event, execute, queue, style};
 use std::io::Write;
 
 // Size of a square of the board in characters
@@ -21,14 +21,11 @@ const WHITE_PIECES_COLOR: style::Color = style::Color::White;
 const PREVIOUS_MOVE_COLOR: style::Color = style::Color::Yellow;
 const SELECTED_SQUARE_COLOR: style::Color = style::Color::Blue;
 const POSSIBLE_SQUARES_COLOR: style::Color = style::Color::Red;
+const PROMOTION_STRING: [&str; SQ_HEIGHT as usize] = [" N  B ", "      ", " R  Q "];
+const PROMOTION_COLOR: style::Color = style::Color::DarkRed;
 
-fn sq_to_top_left(sq: u8, term_width: u16, term_height: u16) -> (u16, u16) {
-    let (a1_col, a1_row) = (
-        // (term_width - 8 * SQ_WIDTH) / 2,
-        0,
-        // (term_height + (6 * SQ_HEIGHT)) / 2,
-        7 * SQ_HEIGHT,
-    );
+fn sq_to_top_left(sq: u8) -> (u16, u16) {
+    let (a1_col, a1_row) = (0, 7 * SQ_HEIGHT);
 
     let (file, rank) = ((sq % 8) as u16, (sq / 8) as u16);
     let (col_offset, row_offset) = (file * SQ_WIDTH, rank * SQ_HEIGHT);
@@ -50,11 +47,6 @@ pub fn display_board(
         crossterm::cursor::Hide,
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
     );
-    let (term_width, term_height) = if let Ok(size) = terminal::size() {
-        (size.0, size.1)
-    } else {
-        (0, 0)
-    };
     for sq in 0..64 {
         let index = ((sq ^ (sq >> 3)) & 1) as usize;
         let sq_colors = [LIGHT_SQUARE_COLOR, DARK_SQUARE_COLOR];
@@ -83,7 +75,7 @@ pub fn display_board(
             .map(|p| (PIECE_STRINGS[p as usize % 6], pieces_colors[p as usize / 6]))
             .unwrap_or((EMPTY_SQUARE_STRING, style::Color::Red));
         let _ = queue!(stdout, crossterm::style::SetForegroundColor(piece_color),);
-        let (col, row) = sq_to_top_left(sq, term_width, term_height);
+        let (col, row) = sq_to_top_left(sq);
         for line in 0..SQ_HEIGHT {
             let _ = queue!(
                 stdout,
@@ -135,10 +127,7 @@ pub fn get_player_move(
     let mut moves_from = moves.clone();
     loop {
         if let Ok(event::Event::Mouse(event::MouseEvent {
-            kind,
-            column,
-            row,
-            modifiers: _,
+            kind, column, row, ..
         })) = event::read()
         {
             if kind == event::MouseEventKind::Down(event::MouseButton::Left) {
@@ -147,8 +136,16 @@ pub fn get_player_move(
                     if from.is_some() {
                         let valid_moves: Vec<&game::Move> =
                             moves_from.iter().filter(|m| m.to == clicked_sq).collect();
-                        if !valid_moves.is_empty() {
+                        let move_number = valid_moves.len();
+                        if move_number == 1 {
                             return *valid_moves[0];
+                        } else if move_number > 1 {
+                            let promotion_piece =
+                                get_promotion_piece(clicked_sq, board.side_to_move);
+                            return **valid_moves
+                                .iter()
+                                .filter(|&m| m.promotion == Some(promotion_piece))
+                                .collect::<Vec<&&game::Move>>()[0];
                         } else {
                             from = Some(clicked_sq);
                             moves_from = moves
@@ -171,6 +168,74 @@ pub fn get_player_move(
                 Vec::new()
             };
             display_board(board, previous_move_squares, from, possible_to_squares);
+        }
+    }
+}
+
+fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
+    let mut stdout = std::io::stdout();
+    let (sq_col, sq_row) = sq_to_top_left(sq);
+
+    let _ = queue!(
+        stdout,
+        style::SetBackgroundColor(PROMOTION_COLOR),
+        style::SetForegroundColor(style::Color::White),
+    );
+
+    for line in 0..SQ_HEIGHT {
+        let _ = queue!(
+            stdout,
+            cursor::MoveTo(sq_col, sq_row + line),
+            style::Print(PROMOTION_STRING[line as usize]),
+        );
+    }
+
+    let _ = queue!(stdout, style::ResetColor);
+    let _ = stdout.flush();
+
+    loop {
+        if let Ok(event::Event::Mouse(event::MouseEvent {
+            kind, column, row, ..
+        })) = event::read()
+            && kind == event::MouseEventKind::Down(event::MouseButton::Left)
+        {
+            // Check if click is inside this square
+            if column >= sq_col
+                && column < sq_col + SQ_WIDTH
+                && row >= sq_row
+                && row < sq_row + SQ_HEIGHT
+            {
+                let local_x = column - sq_col;
+                let local_y = row - sq_row;
+
+                match (local_y, local_x) {
+                    (0, 0) | (0, 1) | (0, 2) => {
+                        return match color {
+                            game::Color::White => game::Piece::WN,
+                            game::Color::Black => game::Piece::BN,
+                        };
+                    }
+                    (0, 3) | (0, 4) | (0, 5) => {
+                        return match color {
+                            game::Color::White => game::Piece::WB,
+                            game::Color::Black => game::Piece::BB,
+                        };
+                    }
+                    (2, 0) | (2, 1) | (2, 2) => {
+                        return match color {
+                            game::Color::White => game::Piece::WR,
+                            game::Color::Black => game::Piece::BR,
+                        };
+                    }
+                    (2, 3) | (2, 4) | (2, 5) => {
+                        return match color {
+                            game::Color::White => game::Piece::WQ,
+                            game::Color::Black => game::Piece::BQ,
+                        };
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 }
