@@ -119,7 +119,7 @@ pub fn get_player_move(
     board: &mut game::Board,
     previous_move_squares: Option<(u8, u8)>,
 ) -> game::Move {
-    let moves = board.get_pseudo_legal_moves();
+    let moves = game::get_legal_moves(board);
     let mut stdout = std::io::stdout();
     let _ = execute!(stdout, event::EnableMouseCapture);
     let _ = execute!(stdout, cursor::Hide);

@@ -1211,13 +1211,14 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
 
 pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = board.get_pseudo_legal_moves();
-    let mut legal_moves = Vec::new();
+    let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
+    let us = board.side_to_move;
     for mv in pseudo_legal_moves {
         board.make_move(mv);
         let illegal = if mv.flags & CASTLING_FLAG != 0 {
-            board.is_castle_legal(mv, board.side_to_move.flip())
+            board.is_castle_legal(mv, us)
         } else {
-            board.is_king_checked(board.side_to_move.flip())
+            board.is_king_checked(us)
         };
         if !illegal {
             legal_moves.push(mv);
