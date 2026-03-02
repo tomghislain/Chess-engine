@@ -1,5 +1,5 @@
 use crate::game;
-use crossterm::{cursor, event, execute, queue, style};
+use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 
 // Size of a square of the board in characters
@@ -129,37 +129,35 @@ pub fn get_player_move(
         if let Ok(event::Event::Mouse(event::MouseEvent {
             kind, column, row, ..
         })) = event::read()
+            && kind == event::MouseEventKind::Down(event::MouseButton::Left)
         {
-            if kind == event::MouseEventKind::Down(event::MouseButton::Left) {
-                let clicked = coords_to_sq(column, row);
-                if let Some(clicked_sq) = clicked {
-                    if from.is_some() {
-                        let valid_moves: Vec<&game::Move> =
-                            moves_from.iter().filter(|m| m.to == clicked_sq).collect();
-                        let move_number = valid_moves.len();
-                        if move_number == 1 {
-                            return *valid_moves[0];
-                        } else if move_number > 1 {
-                            let promotion_piece =
-                                get_promotion_piece(clicked_sq, board.side_to_move);
-                            return **valid_moves
-                                .iter()
-                                .filter(|&m| m.promotion == Some(promotion_piece))
-                                .collect::<Vec<&&game::Move>>()[0];
-                        } else {
-                            from = Some(clicked_sq);
-                            moves_from = moves
-                                .iter()
-                                .filter_map(|&m| if m.from == clicked_sq { Some(m) } else { None })
-                                .collect();
-                        }
+            let clicked = coords_to_sq(column, row);
+            if let Some(clicked_sq) = clicked {
+                if from.is_some() {
+                    let valid_moves: Vec<&game::Move> =
+                        moves_from.iter().filter(|m| m.to == clicked_sq).collect();
+                    let move_number = valid_moves.len();
+                    if move_number == 1 {
+                        return *valid_moves[0];
+                    } else if move_number > 1 {
+                        let promotion_piece = get_promotion_piece(clicked_sq, board.side_to_move);
+                        return **valid_moves
+                            .iter()
+                            .filter(|&m| m.promotion == Some(promotion_piece))
+                            .collect::<Vec<&&game::Move>>()[0];
                     } else {
                         from = Some(clicked_sq);
-                        moves_from = moves_from
+                        moves_from = moves
                             .iter()
                             .filter_map(|&m| if m.from == clicked_sq { Some(m) } else { None })
                             .collect();
                     }
+                } else {
+                    from = Some(clicked_sq);
+                    moves_from = moves_from
+                        .iter()
+                        .filter_map(|&m| if m.from == clicked_sq { Some(m) } else { None })
+                        .collect();
                 }
             }
             let possible_to_squares = if moves_from != moves {
@@ -237,5 +235,21 @@ fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
                 }
             }
         }
+    }
+}
+
+pub fn print_game_result(board: &game::Board, result: bool) {
+    let mut stdout = std::io::stdout();
+    let term_size = terminal::size().unwrap_or_default();
+    let _ = queue!(
+        stdout,
+        terminal::Clear(crossterm::terminal::ClearType::All),
+        cursor::MoveTo(term_size.0, term_size.1)
+    );
+    let _ = stdout.flush();
+    if result {
+        print!("{} has won!", board.side_to_move.flip());
+    } else {
+        print!("Draw!");
     }
 }

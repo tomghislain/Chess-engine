@@ -1,3 +1,7 @@
+use rand::{self, Rng, SeedableRng, rngs::StdRng};
+use std::fmt;
+use std::sync::OnceLock;
+
 pub const FILE_A: u64 = 0x0101010101010101;
 pub const FILE_B: u64 = 0x0202020202020202;
 pub const FILE_G: u64 = 0x4040404040404040;
@@ -50,6 +54,13 @@ pub struct Move {
     pub promotion: Option<Piece>,
 }
 
+struct Zobrist {
+    piece_square: [[u64; 64]; 12],
+    side: u64,
+    castling: [u64; 4],
+    en_passant: [u64; 8],
+}
+
 pub struct Board {
     pub pieces: [u64; 12],
     pub white_occ: u64,
@@ -89,6 +100,15 @@ impl Piece {
     ];
 }
 
+impl fmt::Display for Color {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Color::White => write!(f, "White"),
+            Color::Black => write!(f, "Black"),
+        }
+    }
+}
+
 impl Color {
     pub fn flip(&self) -> Self {
         match self {
@@ -121,7 +141,79 @@ impl Move {
     }
 }
 
+static ZOBRIST: OnceLock<Zobrist> = OnceLock::new();
+
+fn init_zobrist() -> Zobrist {
+    let mut rng = StdRng::seed_from_u64(314159265);
+    let mut piece_square = [[0; 64]; 12];
+    for i in 0..12 {
+        for j in 0..64 {
+            piece_square[i][j] = rng.r#gen();
+        }
+    }
+    let side = rng.r#gen();
+    let mut castling = [0; 4];
+    for i in 0..4 {
+        castling[i] = rng.r#gen();
+    }
+    let mut en_passant = [0; 8];
+    for i in 0..8 {
+        en_passant[i] = rng.r#gen();
+    }
+    Zobrist {
+        piece_square,
+        side,
+        castling,
+        en_passant,
+    }
+}
+
+fn zobrist() -> &'static Zobrist {
+    ZOBRIST.get_or_init(init_zobrist)
+}
+
 impl Board {
+    fn compute_zobrist(&self) -> u64 {
+        let z = zobrist();
+        let mut hash = 0;
+
+        // Pieces
+        for (i, &bb) in self.pieces.iter().enumerate() {
+            let mut pieces = bb;
+            while pieces != 0 {
+                let sq = pieces.trailing_zeros();
+                pieces &= pieces - 1;
+                hash ^= z.piece_square[i][sq as usize];
+            }
+        }
+
+        // Side to move
+        if self.side_to_move == Color::Black {
+            hash ^= z.side;
+        }
+
+        // Castling rights
+        if self.castling & WK_CASTLE != 0 {
+            hash ^= z.castling[0];
+        }
+        if self.castling & WQ_CASTLE != 0 {
+            hash ^= z.castling[1];
+        }
+        if self.castling & BK_CASTLE != 0 {
+            hash ^= z.castling[2];
+        }
+        if self.castling & BQ_CASTLE != 0 {
+            hash ^= z.castling[3];
+        }
+
+        // En passant
+        if self.en_passant < 64 {
+            let file = self.en_passant % 8;
+            hash ^= z.en_passant[file as usize];
+        }
+
+        hash
+    }
     // Function to create a board at the default position
     pub fn new() -> Self {
         let mut pieces = [0u64; 12];
@@ -180,7 +272,7 @@ impl Board {
         let history = Vec::new();
         let undo_stack = Vec::new();
 
-        Board {
+        let mut board = Board {
             pieces,
             white_occ,
             black_occ,
@@ -192,7 +284,11 @@ impl Board {
             zobrist,
             history,
             undo_stack,
-        }
+        };
+
+        board.zobrist = board.compute_zobrist();
+        board.history.push(board.zobrist);
+        board
     }
     pub fn piece_at(&self, sq: u8) -> Option<Piece> {
         let mask = 1 << sq;
@@ -221,6 +317,10 @@ impl Board {
     }
 
     pub fn make_move(&mut self, mv: Move) {
+        let z = zobrist();
+        let old_hash = self.zobrist;
+        let mut hash = old_hash;
+
         let is_capture = mv.flags & CAPTURE_FLAG != 0;
         let is_en_passant = mv.flags & EN_PASSANT_FLAG != 0;
         let is_promotion = mv.flags & PROMOTION_FLAG != 0;
@@ -243,6 +343,7 @@ impl Board {
             self.remove_piece(c_p, c_sq);
             let mask = 1u64 << c_sq;
             opponent_side_mask |= mask;
+            hash ^= z.piece_square[c_p as usize][c_sq as usize];
             Some(c_p)
         } else {
             None
@@ -256,13 +357,16 @@ impl Board {
         let moved_piece = self.piece_at(mv.from).unwrap();
         let moved_mask = (1u64 << mv.from) | (1u64 << mv.to);
         moving_side_mask |= moved_mask;
+        hash ^= z.piece_square[moved_piece as usize][mv.from as usize];
 
         if is_promotion {
             self.remove_piece(moved_piece, mv.from);
             let promoted_piece = mv.promotion.unwrap();
             self.add_piece(promoted_piece, mv.to);
+            hash ^= z.piece_square[promoted_piece as usize][mv.to as usize];
         } else {
             self.move_piece(moved_piece, mv.from, mv.to);
+            hash ^= z.piece_square[moved_piece as usize][mv.to as usize];
 
             if is_castling {
                 let (rook, rook_from, rook_to) = match mv.to {
@@ -277,6 +381,8 @@ impl Board {
 
                 let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
                 moving_side_mask |= rook_mask;
+                hash ^= z.piece_square[rook as usize][rook_from as usize];
+                hash ^= z.piece_square[rook as usize][rook_to as usize];
             }
         }
 
@@ -294,6 +400,11 @@ impl Board {
         }
 
         // Update en passant square
+        let old_en_passant = self.en_passant;
+        if old_en_passant < 64 {
+            let file = old_en_passant % 8;
+            hash ^= z.en_passant[file as usize];
+        }
         let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
         self.en_passant = if is_pawn_move && ((mv.from as i16 - mv.to as i16).abs() == 16) {
             (mv.from + mv.to) / 2
@@ -301,7 +412,26 @@ impl Board {
             64
         };
 
+        if self.en_passant < 64 {
+            let file = self.en_passant % 8;
+            hash ^= z.en_passant[file as usize];
+        }
+
         // Update castling rights
+        let old_castling = self.castling;
+        if old_castling & WK_CASTLE != 0 {
+            hash ^= z.castling[0];
+        }
+        if old_castling & WQ_CASTLE != 0 {
+            hash ^= z.castling[1];
+        }
+        if old_castling & BK_CASTLE != 0 {
+            hash ^= z.castling[2];
+        }
+        if old_castling & BQ_CASTLE != 0 {
+            hash ^= z.castling[3];
+        }
+
         match moved_piece {
             Piece::WK => self.castling &= !(WK_CASTLE | WQ_CASTLE),
             Piece::BK => self.castling &= !(BK_CASTLE | BQ_CASTLE),
@@ -346,6 +476,19 @@ impl Board {
             }
         }
 
+        if self.castling & WK_CASTLE != 0 {
+            hash ^= z.castling[0];
+        }
+        if self.castling & WQ_CASTLE != 0 {
+            hash ^= z.castling[1];
+        }
+        if self.castling & BK_CASTLE != 0 {
+            hash ^= z.castling[2];
+        }
+        if self.castling & BQ_CASTLE != 0 {
+            hash ^= z.castling[3];
+        }
+
         // Update halfmove clock
         self.halfmove_clock = if is_capture || is_pawn_move {
             0
@@ -355,6 +498,11 @@ impl Board {
 
         // Update side_to_move
         self.side_to_move = self.side_to_move.flip();
+        hash ^= z.side;
+
+        // Update hash
+        self.zobrist = hash;
+        self.history.push(self.zobrist);
     }
 
     fn unmake_move(&mut self, mv: Move) {
@@ -364,6 +512,7 @@ impl Board {
         self.en_passant = undo.en_passant;
         self.halfmove_clock = undo.halfmove_clock;
         self.zobrist = undo.zobrist;
+        self.history.pop();
         self.side_to_move = self.side_to_move.flip();
 
         let is_capture = mv.flags & CAPTURE_FLAG != 0;
@@ -1180,34 +1329,71 @@ impl Board {
             || self.is_square_attacked(through, enemy)
             || self.is_square_attacked(mv.to, enemy)
     }
-}
 
-pub fn perft(board: &mut Board, depth: u8) -> u64 {
-    if depth == 0 {
-        return 1;
+    fn is_50_move_draw(&self) -> bool {
+        self.halfmove_clock >= 100
     }
 
-    let mut nodes = 0;
-    let moves = board.get_pseudo_legal_moves();
+    fn is_threefol_repetition(&self) -> bool {
+        let current = self.zobrist;
+        let limit = self.halfmove_clock as usize / 2;
+        self.history
+            .iter()
+            .rev()
+            .step_by(2)
+            .take(limit)
+            .filter(|&&h| h == current)
+            .nth(2)
+            .is_some()
+    }
 
-    for m in moves {
-        // println!("Making move at depth {}: {:?}", depth, m);
-        board.make_move(m);
+    pub fn game_result(&mut self) -> Option<bool> {
+        let win = true;
+        let draw = false;
 
-        let illegal = if m.flags & CASTLING_FLAG != 0 {
-            board.is_castle_legal(m, board.side_to_move.flip())
-        } else {
-            board.is_king_checked(board.side_to_move.flip())
-        };
-        if !illegal {
-            nodes += perft(board, depth - 1);
+        let legal_moves = get_legal_moves(self);
+        if legal_moves.is_empty() {
+            if self.is_king_checked(self.side_to_move) {
+                return Some(win);
+            } else {
+                return Some(draw);
+            }
         }
 
-        // println!("Unmaking move at depth {}: {:?}", depth, m);
-        board.unmake_move(m);
+        if self.is_50_move_draw() || self.is_threefol_repetition() {
+            return Some(draw);
+        }
+
+        None
     }
-    nodes
 }
+
+// pub fn perft(board: &mut Board, depth: u8) -> u64 {
+//     if depth == 0 {
+//         return 1;
+//     }
+
+//     let mut nodes = 0;
+//     let moves = board.get_pseudo_legal_moves();
+
+//     for m in moves {
+//         // println!("Making move at depth {}: {:?}", depth, m);
+//         board.make_move(m);
+
+//         let illegal = if m.flags & CASTLING_FLAG != 0 {
+//             board.is_castle_legal(m, board.side_to_move.flip())
+//         } else {
+//             board.is_king_checked(board.side_to_move.flip())
+//         };
+//         if !illegal {
+//             nodes += perft(board, depth - 1);
+//         }
+
+//         // println!("Unmaking move at depth {}: {:?}", depth, m);
+//         board.unmake_move(m);
+//     }
+//     nodes
+// }
 
 pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = board.get_pseudo_legal_moves();

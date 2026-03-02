@@ -12,5 +12,5 @@ lto = "fat"
 rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
+rand = "0.8"
 crossterm = "0.29.0"
-time-graph = {version = "0.3.3", features = ["table"]}

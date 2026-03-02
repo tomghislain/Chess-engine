@@ -49,19 +49,27 @@ fn play_single_game() {
 
     let mut board = game::Board::new();
     let mut mv = game::Move::new(65, 65, 0, None);
-    for i in (0..).step_by(2) {
+    for _ in (0..).step_by(2) {
         let _ = crossterm::terminal::enable_raw_mode();
-        gui::display_board(&board, None, None, Vec::new());
+        gui::display_board(&board, Some((mv.from, mv.to)), None, Vec::new());
         mv = white_player.get_move(&mut board, Some((mv.from, mv.to)));
         let _ = crossterm::terminal::disable_raw_mode();
-        println!("Making move {i}");
         board.make_move(mv);
+        let maybe_result = board.game_result();
+        if let Some(result) = maybe_result {
+            gui::print_game_result(&board, result);
+            break;
+        }
         let _ = crossterm::terminal::enable_raw_mode();
-        gui::display_board(&board, None, None, Vec::new());
+        gui::display_board(&board, Some((mv.from, mv.to)), None, Vec::new());
         mv = black_player.get_move(&mut board, Some((mv.from, mv.to)));
         let _ = crossterm::terminal::disable_raw_mode();
-        println!("Making move {}", i + 1);
         board.make_move(mv);
+        let maybe_result = board.game_result();
+        if let Some(result) = maybe_result {
+            gui::print_game_result(&board, result);
+            break;
+        }
     }
 }
 
