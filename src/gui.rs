@@ -44,8 +44,8 @@ pub fn display_board(
     let mut stdout = std::io::stdout();
     let _ = queue!(
         stdout,
-        crossterm::cursor::Hide,
-        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+        cursor::Hide,
+        terminal::Clear(terminal::ClearType::All)
     );
     for sq in 0..64 {
         let index = ((sq ^ (sq >> 3)) & 1) as usize;
@@ -240,16 +240,21 @@ fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
 
 pub fn print_game_result(board: &game::Board, result: bool) {
     let mut stdout = std::io::stdout();
-    let term_size = terminal::size().unwrap_or_default();
+
+    let result_row = 8 * SQ_HEIGHT;
+
+    let result_string = if result {
+        format!("{} has won!", board.side_to_move.flip())
+    } else {
+        "Draw!".to_string()
+    };
+
     let _ = queue!(
         stdout,
-        terminal::Clear(crossterm::terminal::ClearType::All),
-        cursor::MoveTo(term_size.0, term_size.1)
+        cursor::MoveTo(0, result_row),
+        style::ResetColor,
+        style::Print(result_string),
     );
+
     let _ = stdout.flush();
-    if result {
-        print!("{} has won!", board.side_to_move.flip());
-    } else {
-        print!("Draw!");
-    }
 }
