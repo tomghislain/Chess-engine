@@ -1330,11 +1330,11 @@ impl Board {
             || self.is_square_attacked(mv.to, enemy)
     }
 
-    fn is_50_move_draw(&self) -> bool {
+    pub fn is_50_move_draw(&self) -> bool {
         self.halfmove_clock >= 100
     }
 
-    fn is_threefol_repetition(&self) -> bool {
+    pub fn is_threefol_repetition(&self) -> bool {
         let current = self.zobrist;
         let limit = self.halfmove_clock as usize / 2;
         self.history

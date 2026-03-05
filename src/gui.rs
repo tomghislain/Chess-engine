@@ -118,8 +118,11 @@ fn coords_to_sq(col: u16, row: u16) -> Option<u8> {
 pub fn get_player_move(
     board: &mut game::Board,
     previous_move_squares: Option<(u8, u8)>,
-) -> game::Move {
+) -> Option<game::Move> {
     let moves = game::get_legal_moves(board);
+    if moves.is_empty() || board.is_50_move_draw() || board.is_threefol_repetition() {
+        return None;
+    };
     let mut stdout = std::io::stdout();
     let _ = execute!(stdout, event::EnableMouseCapture);
     let _ = execute!(stdout, cursor::Hide);
@@ -138,13 +141,13 @@ pub fn get_player_move(
                         moves_from.iter().filter(|m| m.to == clicked_sq).collect();
                     let move_number = valid_moves.len();
                     if move_number == 1 {
-                        return *valid_moves[0];
+                        return Some(*valid_moves[0]);
                     } else if move_number > 1 {
                         let promotion_piece = get_promotion_piece(clicked_sq, board.side_to_move);
-                        return **valid_moves
+                        return Some(**valid_moves
                             .iter()
                             .filter(|&m| m.promotion == Some(promotion_piece))
-                            .collect::<Vec<&&game::Move>>()[0];
+                            .collect::<Vec<&&game::Move>>()[0]);
                     } else {
                         from = Some(clicked_sq);
                         moves_from = moves

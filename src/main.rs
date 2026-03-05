@@ -75,7 +75,7 @@ fn run_game(
             game::Color::Black => black,
         };
 
-        let mv = match current_player {
+        let mv_result = match current_player {
             PlayerType::Input => {
                 if !show_gui {
                     return Err("Input not supported in batch mode.".into());
@@ -86,14 +86,16 @@ fn run_game(
             _ => unimplemented!(),
         };
 
-        if show_gui {
+        if let Some(mv) = mv_result {
+                    if show_gui {
             crossterm::terminal::disable_raw_mode()?;
         }
 
         board.make_move(mv);
         last_move = mv;
 
-        if let Some(result) = board.game_result() {
+        } else {
+            if let Some(result) = board.game_result() {
             if show_gui {
                 gui::print_game_result(&board, result);
             }
@@ -102,6 +104,7 @@ fn run_game(
                 return Ok(Some(board.side_to_move.flip()));
             } else {
                 return Ok(None);
+            }
             }
         }
     }
