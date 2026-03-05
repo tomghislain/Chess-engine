@@ -266,7 +266,7 @@ impl Board {
 
         let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
 
-        let en_passant = 0;
+        let en_passant = 64;
         let halfmove_clock = 0;
         let zobrist = 0;
         let history = Vec::new();
