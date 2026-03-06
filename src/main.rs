@@ -63,7 +63,14 @@ fn run_game(
     show_gui: bool,
 ) -> Result<Option<game::Color>, Box<dyn std::error::Error>> {
     let mut board = game::Board::new();
-    let mut last_move = game::Move::new(0, 0, game::Piece::WK, None, None, 0);
+    let mut last_move = game::Move::new(
+        0,
+        0,
+        game::Piece::WK,
+        game::Piece::None,
+        game::Piece::None,
+        0,
+    );
 
     loop {
         if show_gui {

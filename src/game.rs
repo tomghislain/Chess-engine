@@ -24,6 +24,7 @@ pub enum Piece {
     BR,
     BQ,
     BK,
+    None,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -72,10 +73,9 @@ pub struct Board {
     pub undo_stack: Vec<Undo>,
 }
 
-pub const PROMOTION_FLAG: u8 = 1 << 0;
-pub const EN_PASSANT_FLAG: u8 = 1 << 1;
-pub const CASTLING_FLAG: u8 = 1 << 2;
-pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 3;
+pub const EN_PASSANT_FLAG: u8 = 1 << 0;
+pub const CASTLING_FLAG: u8 = 1 << 1;
+pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 2;
 
 impl Piece {
     pub const PIECE_LIST: [Piece; 12] = [
@@ -128,24 +128,16 @@ impl Move {
         from: u8,
         to: u8,
         moved_piece: Piece,
-        captured_piece: Option<Piece>,
-        promotion_piece: Option<Piece>,
+        captured_piece: Piece,
+        promotion_piece: Piece,
         flags: u8,
     ) -> Self {
-        let promo_piece_num = match promotion_piece {
-            Some(piece) => piece as u32,
-            None => Piece::BK as u32 + 1,
-        };
-        let captured_piece_num = match captured_piece {
-            Some(piece) => piece as u32,
-            None => Piece::BK as u32 + 1,
-        };
         Move(
             from as u32 // 6 bits
              | ((to as u32) << 6) // 6 bits
              | ((moved_piece as u32) << 12) // 4 bits
-             | (captured_piece_num << 16) // 4 bits
-             | (promo_piece_num << 20) // 4 bits
+             | ((captured_piece as u32)<< 16) // 4 bits
+             | ((promotion_piece as u32)<< 20) // 4 bits
              | ((flags as u32) << 24), // 4 bits
         )
     }
@@ -163,14 +155,14 @@ impl Move {
         Piece::PIECE_LIST[index]
     }
 
-    pub fn captured_piece(self) -> Option<Piece> {
+    pub fn captured_piece(self) -> Piece {
         let index = ((self.0 >> 16) & 0b1111) as usize;
-        Piece::PIECE_LIST.get(index).copied()
+        Piece::PIECE_LIST.get(index).copied().unwrap_or(Piece::None)
     }
 
-    pub fn promotion(self) -> Option<Piece> {
+    pub fn promotion(self) -> Piece {
         let index = ((self.0 >> 20) & 0b1111) as usize;
-        Piece::PIECE_LIST.get(index).copied()
+        Piece::PIECE_LIST.get(index).copied().unwrap_or(Piece::None)
     }
 
     pub fn flags(self) -> u8 {
@@ -335,16 +327,16 @@ impl Board {
             .find(|&p| self.pieces[p as usize] & mask != 0)
     }
 
-    pub fn piece_at_for(&self, sq: u8, color: Color) -> Option<Piece> {
+    pub fn piece_at_for(&self, sq: u8, color: Color) -> Piece {
         let mask = 1 << sq;
         let pieces = match color {
             Color::White => &Piece::PIECE_LIST[0..6],
             Color::Black => &Piece::PIECE_LIST[6..12],
         };
-        pieces
+        *pieces
             .iter()
             .find(|&&p| self.pieces[p as usize] & mask != 0)
-            .copied()
+            .unwrap_or(&Piece::None)
     }
 
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
@@ -372,7 +364,6 @@ impl Board {
 
         let flags = mv.flags();
         let is_en_passant = flags & EN_PASSANT_FLAG != 0;
-        let is_promotion = flags & PROMOTION_FLAG != 0;
         let is_castling = flags & CASTLING_FLAG != 0;
         let is_double_pawn_push = flags & DOUBLE_PAWN_PUSH_FLAG != 0;
         let mut moving_side_mask = 0u64;
@@ -380,7 +371,8 @@ impl Board {
         let us = self.side_to_move;
 
         // Remove piece if capture
-        if let Some(c_p) = mv.captured_piece() {
+        let c_p = mv.captured_piece();
+        if c_p != Piece::None {
             let c_sq = if is_en_passant {
                 if us == Color::White {
                     mv.to() - 8
@@ -406,11 +398,11 @@ impl Board {
         moving_side_mask |= moved_mask;
         hash ^= z.piece_square[moved_piece as usize][mv.from() as usize];
 
-        if is_promotion {
+        let promotion_piece = mv.promotion();
+        if promotion_piece != Piece::None {
             self.remove_piece(moved_piece, mv.from());
-            let promoted_piece = mv.promotion().unwrap();
-            self.add_piece(promoted_piece, mv.to());
-            hash ^= z.piece_square[promoted_piece as usize][mv.to() as usize];
+            self.add_piece(promotion_piece, mv.to());
+            hash ^= z.piece_square[promotion_piece as usize][mv.to() as usize];
         } else {
             self.move_piece(moved_piece, mv.from(), mv.to());
             hash ^= z.piece_square[moved_piece as usize][mv.to() as usize];
@@ -500,8 +492,8 @@ impl Board {
             _ => (),
         }
 
-        if let Some(piece) = mv.captured_piece() {
-            match piece {
+        if c_p != Piece::None {
+            match c_p {
                 Piece::WR => {
                     if mv.to() == 7 {
                         self.castling &= !WK_CASTLE
@@ -537,7 +529,7 @@ impl Board {
 
         // Update halfmove clock
         let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
-        self.halfmove_clock = if mv.captured_piece().is_some() || is_pawn_move {
+        self.halfmove_clock = if c_p != Piece::None || is_pawn_move {
             0
         } else {
             self.halfmove_clock + 1
@@ -564,15 +556,14 @@ impl Board {
 
         let is_en_passant = mv.flags() & EN_PASSANT_FLAG != 0;
         let is_castling = mv.flags() & CASTLING_FLAG != 0;
-        let is_promotion = mv.flags() & PROMOTION_FLAG != 0;
         let mut moving_side_mask: u64 = 0;
         let mut opponent_side_mask: u64 = 0;
 
         // Move back the piece (checking for promotion and castling)
         moving_side_mask |= (1u64 << mv.to()) | (1u64 << mv.from());
-        if is_promotion {
-            let promoted_piece = mv.promotion().unwrap();
-            self.remove_piece(promoted_piece, mv.to());
+        let promotion_piece = mv.promotion();
+        if promotion_piece != Piece::None {
+            self.remove_piece(promotion_piece, mv.to());
 
             match self.side_to_move {
                 Color::White => {
@@ -603,7 +594,8 @@ impl Board {
         }
 
         // In case of capture (and maybe en passant), restore the taken piece
-        if let Some(captured) = mv.captured_piece() {
+        let c_p = mv.captured_piece();
+        if c_p != Piece::None {
             let sq = if is_en_passant {
                 match self.side_to_move {
                     Color::White => mv.to() - 8,
@@ -614,7 +606,7 @@ impl Board {
             };
             let sq_mask = 1u64 << sq;
             opponent_side_mask |= sq_mask;
-            self.add_piece(captured, sq);
+            self.add_piece(c_p, sq);
         }
 
         // Recompute occupancy
@@ -661,40 +653,12 @@ impl Board {
             let from = to - 8;
             let is_promotion = to > 55;
             if is_promotion {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    None,
-                    Some(Piece::WN),
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    None,
-                    Some(Piece::WB),
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    None,
-                    Some(Piece::WR),
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    None,
-                    Some(Piece::WQ),
-                    PROMOTION_FLAG,
-                ));
+                moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::WN, 0));
+                moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::WB, 0));
+                moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::WR, 0));
+                moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::WQ, 0));
             } else {
-                moves.push(Move::new(from, to, Piece::WP, None, None, 0));
+                moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::None, 0));
             }
         }
 
@@ -709,8 +673,8 @@ impl Board {
                 from,
                 to,
                 Piece::WP,
-                None,
-                None,
+                Piece::None,
+                Piece::None,
                 DOUBLE_PAWN_PUSH_FLAG,
             ));
         }
@@ -730,40 +694,19 @@ impl Board {
                 let is_promotion = to > 55;
                 let captured_piece = self.piece_at_for(to, Color::Black);
                 if is_promotion {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Some(Piece::WN),
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Some(Piece::WB),
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Some(Piece::WR),
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Some(Piece::WQ),
-                        PROMOTION_FLAG,
-                    ));
+                    moves.push(Move::new(from, to, Piece::WP, captured_piece, Piece::WN, 0));
+                    moves.push(Move::new(from, to, Piece::WP, captured_piece, Piece::WB, 0));
+                    moves.push(Move::new(from, to, Piece::WP, captured_piece, Piece::WR, 0));
+                    moves.push(Move::new(from, to, Piece::WP, captured_piece, Piece::WQ, 0));
                 } else {
-                    moves.push(Move::new(from, to, Piece::WP, captured_piece, None, 0));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        captured_piece,
+                        Piece::None,
+                        0,
+                    ));
                 }
             }
         }
@@ -780,8 +723,8 @@ impl Board {
                     from,
                     to,
                     Piece::WP,
-                    Some(Piece::BP),
-                    None,
+                    Piece::BP,
+                    Piece::None,
                     EN_PASSANT_FLAG,
                 ));
             }
@@ -794,8 +737,8 @@ impl Board {
                     from,
                     to,
                     Piece::WP,
-                    Some(Piece::BP),
-                    None,
+                    Piece::BP,
+                    Piece::None,
                     EN_PASSANT_FLAG,
                 ));
             }
@@ -832,40 +775,12 @@ impl Board {
             let from = to + 8;
             let is_promotion = to < 8;
             if is_promotion {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    None,
-                    Some(Piece::BN),
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    None,
-                    Some(Piece::BB),
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    None,
-                    Some(Piece::BR),
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    None,
-                    Some(Piece::BQ),
-                    PROMOTION_FLAG,
-                ));
+                moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::BN, 0));
+                moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::BB, 0));
+                moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::BR, 0));
+                moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::BQ, 0));
             } else {
-                moves.push(Move::new(from, to, Piece::BP, None, None, 0));
+                moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::None, 0));
             }
         }
 
@@ -880,8 +795,8 @@ impl Board {
                 from,
                 to,
                 Piece::BP,
-                None,
-                None,
+                Piece::None,
+                Piece::None,
                 DOUBLE_PAWN_PUSH_FLAG,
             ));
         }
@@ -901,40 +816,19 @@ impl Board {
                 let is_promotion = to < 8;
                 let captured_piece = self.piece_at_for(to, Color::White);
                 if is_promotion {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Some(Piece::BN),
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Some(Piece::BB),
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Some(Piece::BR),
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Some(Piece::BQ),
-                        PROMOTION_FLAG,
-                    ));
+                    moves.push(Move::new(from, to, Piece::BP, captured_piece, Piece::BN, 0));
+                    moves.push(Move::new(from, to, Piece::BP, captured_piece, Piece::BB, 0));
+                    moves.push(Move::new(from, to, Piece::BP, captured_piece, Piece::BR, 0));
+                    moves.push(Move::new(from, to, Piece::BP, captured_piece, Piece::BQ, 0));
                 } else {
-                    moves.push(Move::new(from, to, Piece::BP, captured_piece, None, 0));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        captured_piece,
+                        Piece::None,
+                        0,
+                    ));
                 }
             }
         }
@@ -951,8 +845,8 @@ impl Board {
                     from,
                     to,
                     Piece::BP,
-                    Some(Piece::WP),
-                    None,
+                    Piece::WP,
+                    Piece::None,
                     EN_PASSANT_FLAG,
                 ));
             }
@@ -965,8 +859,8 @@ impl Board {
                     from,
                     to,
                     Piece::BP,
-                    Some(Piece::WP),
-                    None,
+                    Piece::WP,
+                    Piece::None,
                     EN_PASSANT_FLAG,
                 ));
             }
@@ -1016,12 +910,19 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
-                let mut captured_piece = None;
+                let mut captured_piece = Piece::None;
                 if (1u64 << to) & their_occ != 0 {
                     captured_piece = self.piece_at_for(to, self.side_to_move.flip());
                 };
 
-                moves.push(Move::new(from, to, knight_piece, captured_piece, None, 0));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    knight_piece,
+                    captured_piece,
+                    Piece::None,
+                    0,
+                ));
             }
         }
     }
@@ -1156,7 +1057,14 @@ impl Board {
             while non_captures != 0 {
                 let to = non_captures.trailing_zeros() as u8;
                 non_captures &= non_captures - 1;
-                moves.push(Move::new(from, to, bishop_piece, None, None, 0));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    bishop_piece,
+                    Piece::None,
+                    Piece::None,
+                    0,
+                ));
             }
             while captures != 0 {
                 let to = captures.trailing_zeros() as u8;
@@ -1166,7 +1074,7 @@ impl Board {
                     to,
                     bishop_piece,
                     self.piece_at_for(to, self.side_to_move.flip()),
-                    None,
+                    Piece::None,
                     0,
                 ));
             }
@@ -1192,7 +1100,7 @@ impl Board {
             while non_captures != 0 {
                 let to = non_captures.trailing_zeros() as u8;
                 non_captures &= non_captures - 1;
-                moves.push(Move::new(from, to, rook_piece, None, None, 0));
+                moves.push(Move::new(from, to, rook_piece, Piece::None, Piece::None, 0));
             }
             while captures != 0 {
                 let to = captures.trailing_zeros() as u8;
@@ -1202,7 +1110,7 @@ impl Board {
                     to,
                     rook_piece,
                     self.piece_at_for(to, self.side_to_move.flip()),
-                    None,
+                    Piece::None,
                     0,
                 ));
             }
@@ -1238,7 +1146,14 @@ impl Board {
             while non_captures != 0 {
                 let to = non_captures.trailing_zeros() as u8;
                 non_captures &= non_captures - 1;
-                moves.push(Move::new(from, to, queen_piece, None, None, 0));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    queen_piece,
+                    Piece::None,
+                    Piece::None,
+                    0,
+                ));
             }
             while captures != 0 {
                 let to = captures.trailing_zeros() as u8;
@@ -1248,7 +1163,7 @@ impl Board {
                     to,
                     queen_piece,
                     self.piece_at_for(to, self.side_to_move.flip()),
-                    None,
+                    Piece::None,
                     0,
                 ));
             }
@@ -1311,32 +1226,67 @@ impl Board {
             let to = attacks.trailing_zeros() as u8;
             attacks &= attacks - 1;
 
-            let mut captured_piece = None;
+            let mut captured_piece = Piece::None;
             if their_occ & (1u64 << to) != 0 {
                 captured_piece = self.piece_at_for(to, self.side_to_move.flip());
             };
 
-            moves.push(Move::new(from, to, king_piece, captured_piece, None, 0));
+            moves.push(Move::new(
+                from,
+                to,
+                king_piece,
+                captured_piece,
+                Piece::None,
+                0,
+            ));
         }
 
         // Generate castling moves
         if self.side_to_move == Color::White {
             if self.castling & WK_CASTLE != 0 && self.occ & ((1u64 << 5) | (1u64 << 6)) == 0 {
-                moves.push(Move::new(4, 6, king_piece, None, None, CASTLING_FLAG));
+                moves.push(Move::new(
+                    4,
+                    6,
+                    king_piece,
+                    Piece::None,
+                    Piece::None,
+                    CASTLING_FLAG,
+                ));
             }
             if self.castling & WQ_CASTLE != 0
                 && self.occ & ((1u64 << 3) | (1u64 << 2) | (1u64 << 1)) == 0
             {
-                moves.push(Move::new(4, 2, king_piece, None, None, CASTLING_FLAG));
+                moves.push(Move::new(
+                    4,
+                    2,
+                    king_piece,
+                    Piece::None,
+                    Piece::None,
+                    CASTLING_FLAG,
+                ));
             }
         } else {
             if self.castling & BK_CASTLE != 0 && self.occ & ((1u64 << 61) | (1u64 << 62)) == 0 {
-                moves.push(Move::new(60, 62, king_piece, None, None, CASTLING_FLAG));
+                moves.push(Move::new(
+                    60,
+                    62,
+                    king_piece,
+                    Piece::None,
+                    Piece::None,
+                    CASTLING_FLAG,
+                ));
             }
             if self.castling & BQ_CASTLE != 0
                 && self.occ & ((1u64 << 59) | (1u64 << 58) | (1u64 << 57)) == 0
             {
-                moves.push(Move::new(60, 58, king_piece, None, None, CASTLING_FLAG));
+                moves.push(Move::new(
+                    60,
+                    58,
+                    king_piece,
+                    Piece::None,
+                    Piece::None,
+                    CASTLING_FLAG,
+                ));
             }
         }
     }

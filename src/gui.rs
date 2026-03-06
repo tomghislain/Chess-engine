@@ -147,7 +147,7 @@ pub fn get_player_move(
                         return Some(
                             **valid_moves
                                 .iter()
-                                .filter(|&m| m.promotion() == Some(promotion_piece))
+                                .filter(|&m| m.promotion() == promotion_piece)
                                 .collect::<Vec<&&game::Move>>()[0],
                         );
                     } else {
