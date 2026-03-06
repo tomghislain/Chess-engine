@@ -335,6 +335,18 @@ impl Board {
             .find(|&p| self.pieces[p as usize] & mask != 0)
     }
 
+    pub fn piece_at_for(&self, sq: u8, color: Color) -> Option<Piece> {
+        let mask = 1 << sq;
+        let pieces = match color {
+            Color::White => &Piece::PIECE_LIST[0..6],
+            Color::Black => &Piece::PIECE_LIST[6..12],
+        };
+        pieces
+            .iter()
+            .find(|&&p| self.pieces[p as usize] & mask != 0)
+            .copied()
+    }
+
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
     fn remove_piece(&mut self, p: Piece, sq: u8) {
         let mask = 1 << sq;
@@ -710,7 +722,7 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let is_promotion = to > 55;
-                let captured_piece = self.piece_at(to);
+                let captured_piece = self.piece_at_for(to, Color::Black);
                 if is_promotion {
                     moves.push(Move::new(
                         from,
@@ -881,7 +893,7 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let is_promotion = to < 8;
-                let captured_piece = self.piece_at(to);
+                let captured_piece = self.piece_at_for(to, Color::White);
                 if is_promotion {
                     moves.push(Move::new(
                         from,
@@ -1007,7 +1019,7 @@ impl Board {
 
                 let mut captured_piece = None;
                 let flag = if (1u64 << to) & their_occ != 0 {
-                    captured_piece = self.piece_at(to);
+                    captured_piece = self.piece_at_for(to, self.side_to_move.flip());
                     CAPTURE_FLAG
                 } else {
                     0
@@ -1164,7 +1176,7 @@ impl Board {
                     from,
                     to,
                     bishop_piece,
-                    self.piece_at(to),
+                    self.piece_at_for(to, self.side_to_move.flip()),
                     None,
                     CAPTURE_FLAG,
                 ));
@@ -1200,7 +1212,7 @@ impl Board {
                     from,
                     to,
                     rook_piece,
-                    self.piece_at(to),
+                    self.piece_at_for(to, self.side_to_move.flip()),
                     None,
                     CAPTURE_FLAG,
                 ));
@@ -1246,7 +1258,7 @@ impl Board {
                     from,
                     to,
                     queen_piece,
-                    self.piece_at(to),
+                    self.piece_at_for(to, self.side_to_move.flip()),
                     None,
                     CAPTURE_FLAG,
                 ));
@@ -1312,7 +1324,7 @@ impl Board {
 
             let mut captured_piece = None;
             let flag = if their_occ & (1u64 << to) != 0 {
-                captured_piece = self.piece_at(to);
+                captured_piece = self.piece_at_for(to, self.side_to_move.flip());
                 CAPTURE_FLAG
             } else {
                 0
