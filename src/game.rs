@@ -72,10 +72,10 @@ pub struct Board {
     pub undo_stack: Vec<Undo>,
 }
 
-pub const CAPTURE_FLAG: u8 = 1 << 0;
-pub const PROMOTION_FLAG: u8 = 1 << 1;
-pub const EN_PASSANT_FLAG: u8 = 1 << 2;
-pub const CASTLING_FLAG: u8 = 1 << 3;
+pub const PROMOTION_FLAG: u8 = 1 << 0;
+pub const EN_PASSANT_FLAG: u8 = 1 << 1;
+pub const CASTLING_FLAG: u8 = 1 << 2;
+pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 3;
 
 impl Piece {
     pub const PIECE_LIST: [Piece; 12] = [
@@ -370,17 +370,17 @@ impl Board {
         let old_hash = self.zobrist;
         let mut hash = old_hash;
 
-        let is_capture = mv.flags() & CAPTURE_FLAG != 0;
-        let is_en_passant = mv.flags() & EN_PASSANT_FLAG != 0;
-        let is_promotion = mv.flags() & PROMOTION_FLAG != 0;
-        let is_castling = mv.flags() & CASTLING_FLAG != 0;
+        let flags = mv.flags();
+        let is_en_passant = flags & EN_PASSANT_FLAG != 0;
+        let is_promotion = flags & PROMOTION_FLAG != 0;
+        let is_castling = flags & CASTLING_FLAG != 0;
+        let is_double_pawn_push = flags & DOUBLE_PAWN_PUSH_FLAG != 0;
         let mut moving_side_mask = 0u64;
         let mut opponent_side_mask = 0u64;
         let us = self.side_to_move;
 
         // Remove piece if capture
-        if is_capture {
-            let c_p = mv.captured_piece().unwrap();
+        if let Some(c_p) = mv.captured_piece() {
             let c_sq = if is_en_passant {
                 if us == Color::White {
                     mv.to() - 8
@@ -452,8 +452,7 @@ impl Board {
             let file = old_en_passant % 8;
             hash ^= z.en_passant[file as usize];
         }
-        let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
-        self.en_passant = if is_pawn_move && ((mv.from() as i16 - mv.to() as i16).abs() == 16) {
+        self.en_passant = if is_double_pawn_push {
             (mv.from() + mv.to()) / 2
         } else {
             64
@@ -537,7 +536,8 @@ impl Board {
         }
 
         // Update halfmove clock
-        self.halfmove_clock = if is_capture || is_pawn_move {
+        let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
+        self.halfmove_clock = if mv.captured_piece().is_some() || is_pawn_move {
             0
         } else {
             self.halfmove_clock + 1
@@ -562,7 +562,6 @@ impl Board {
         self.history.pop();
         self.side_to_move = self.side_to_move.flip();
 
-        let is_capture = mv.flags() & CAPTURE_FLAG != 0;
         let is_en_passant = mv.flags() & EN_PASSANT_FLAG != 0;
         let is_castling = mv.flags() & CASTLING_FLAG != 0;
         let is_promotion = mv.flags() & PROMOTION_FLAG != 0;
@@ -604,7 +603,7 @@ impl Board {
         }
 
         // In case of capture (and maybe en passant), restore the taken piece
-        if is_capture {
+        if let Some(captured) = mv.captured_piece() {
             let sq = if is_en_passant {
                 match self.side_to_move {
                     Color::White => mv.to() - 8,
@@ -615,7 +614,7 @@ impl Board {
             };
             let sq_mask = 1u64 << sq;
             opponent_side_mask |= sq_mask;
-            self.add_piece(mv.captured_piece().unwrap(), sq);
+            self.add_piece(captured, sq);
         }
 
         // Recompute occupancy
@@ -706,7 +705,14 @@ impl Board {
             let to = double_push.trailing_zeros() as u8;
             double_push &= double_push - 1;
             let from = to - 16;
-            moves.push(Move::new(from, to, Piece::WP, None, None, 0));
+            moves.push(Move::new(
+                from,
+                to,
+                Piece::WP,
+                None,
+                None,
+                DOUBLE_PAWN_PUSH_FLAG,
+            ));
         }
 
         // Captures
@@ -730,7 +736,7 @@ impl Board {
                         Piece::WP,
                         captured_piece,
                         Some(Piece::WN),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                     moves.push(Move::new(
                         from,
@@ -738,7 +744,7 @@ impl Board {
                         Piece::WP,
                         captured_piece,
                         Some(Piece::WB),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                     moves.push(Move::new(
                         from,
@@ -746,7 +752,7 @@ impl Board {
                         Piece::WP,
                         captured_piece,
                         Some(Piece::WR),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                     moves.push(Move::new(
                         from,
@@ -754,17 +760,10 @@ impl Board {
                         Piece::WP,
                         captured_piece,
                         Some(Piece::WQ),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                 } else {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        None,
-                        CAPTURE_FLAG,
-                    ));
+                    moves.push(Move::new(from, to, Piece::WP, captured_piece, None, 0));
                 }
             }
         }
@@ -783,7 +782,7 @@ impl Board {
                     Piece::WP,
                     Some(Piece::BP),
                     None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    EN_PASSANT_FLAG,
                 ));
             }
             let mut right_en_passant = ((pawns << 9) & !FILE_A) & en_passant_mask;
@@ -797,7 +796,7 @@ impl Board {
                     Piece::WP,
                     Some(Piece::BP),
                     None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    EN_PASSANT_FLAG,
                 ));
             }
         }
@@ -877,7 +876,14 @@ impl Board {
             let to = double_push.trailing_zeros() as u8;
             double_push &= double_push - 1;
             let from = to + 16;
-            moves.push(Move::new(from, to, Piece::BP, None, None, 0));
+            moves.push(Move::new(
+                from,
+                to,
+                Piece::BP,
+                None,
+                None,
+                DOUBLE_PAWN_PUSH_FLAG,
+            ));
         }
 
         // Captures
@@ -901,7 +907,7 @@ impl Board {
                         Piece::BP,
                         captured_piece,
                         Some(Piece::BN),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                     moves.push(Move::new(
                         from,
@@ -909,7 +915,7 @@ impl Board {
                         Piece::BP,
                         captured_piece,
                         Some(Piece::BB),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                     moves.push(Move::new(
                         from,
@@ -917,7 +923,7 @@ impl Board {
                         Piece::BP,
                         captured_piece,
                         Some(Piece::BR),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                     moves.push(Move::new(
                         from,
@@ -925,17 +931,10 @@ impl Board {
                         Piece::BP,
                         captured_piece,
                         Some(Piece::BQ),
-                        CAPTURE_FLAG | PROMOTION_FLAG,
+                        PROMOTION_FLAG,
                     ));
                 } else {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        None,
-                        CAPTURE_FLAG,
-                    ));
+                    moves.push(Move::new(from, to, Piece::BP, captured_piece, None, 0));
                 }
             }
         }
@@ -954,7 +953,7 @@ impl Board {
                     Piece::BP,
                     Some(Piece::WP),
                     None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    EN_PASSANT_FLAG,
                 ));
             }
             let mut right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
@@ -968,7 +967,7 @@ impl Board {
                     Piece::BP,
                     Some(Piece::WP),
                     None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    EN_PASSANT_FLAG,
                 ));
             }
         }
@@ -1018,21 +1017,11 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let mut captured_piece = None;
-                let flag = if (1u64 << to) & their_occ != 0 {
+                if (1u64 << to) & their_occ != 0 {
                     captured_piece = self.piece_at_for(to, self.side_to_move.flip());
-                    CAPTURE_FLAG
-                } else {
-                    0
                 };
 
-                moves.push(Move::new(
-                    from,
-                    to,
-                    knight_piece,
-                    captured_piece,
-                    None,
-                    flag,
-                ));
+                moves.push(Move::new(from, to, knight_piece, captured_piece, None, 0));
             }
         }
     }
@@ -1178,7 +1167,7 @@ impl Board {
                     bishop_piece,
                     self.piece_at_for(to, self.side_to_move.flip()),
                     None,
-                    CAPTURE_FLAG,
+                    0,
                 ));
             }
         }
@@ -1214,7 +1203,7 @@ impl Board {
                     rook_piece,
                     self.piece_at_for(to, self.side_to_move.flip()),
                     None,
-                    CAPTURE_FLAG,
+                    0,
                 ));
             }
         }
@@ -1260,7 +1249,7 @@ impl Board {
                     queen_piece,
                     self.piece_at_for(to, self.side_to_move.flip()),
                     None,
-                    CAPTURE_FLAG,
+                    0,
                 ));
             }
         }
@@ -1323,14 +1312,11 @@ impl Board {
             attacks &= attacks - 1;
 
             let mut captured_piece = None;
-            let flag = if their_occ & (1u64 << to) != 0 {
+            if their_occ & (1u64 << to) != 0 {
                 captured_piece = self.piece_at_for(to, self.side_to_move.flip());
-                CAPTURE_FLAG
-            } else {
-                0
             };
 
-            moves.push(Move::new(from, to, king_piece, captured_piece, None, flag));
+            moves.push(Move::new(from, to, king_piece, captured_piece, None, 0));
         }
 
         // Generate castling moves
