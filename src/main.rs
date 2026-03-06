@@ -2,6 +2,8 @@ mod ai;
 mod game;
 mod gui;
 
+use std::env;
+
 #[derive(Clone, Copy)]
 enum PlayerType {
     Input,
@@ -20,8 +22,12 @@ impl std::fmt::Display for PlayerType {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ask_action()
-    // Initialize the board
+    if env::args().any(|arg| arg == "--bench") {
+        play_batch_game(true)
+    } else {
+        ask_action()
+    }
+    // let board = game::Board::new();
     // let depth = 5;
     // println!(
     //     "Number of moves at depth {}: {}",
@@ -44,7 +50,7 @@ fn ask_action() -> Result<(), Box<dyn std::error::Error>> {
 
     match read_usize_input()? {
         0 => play_single_game()?,
-        1 => play_batch_game()?,
+        1 => play_batch_game(false)?,
         _ => println!("Invalid input."),
     };
 
@@ -87,15 +93,13 @@ fn run_game(
         };
 
         if let Some(mv) = mv_result {
-                    if show_gui {
-            crossterm::terminal::disable_raw_mode()?;
-        }
+            if show_gui {
+                crossterm::terminal::disable_raw_mode()?;
+            }
 
-        board.make_move(mv);
-        last_move = mv;
-
-        } else {
-            if let Some(result) = board.game_result() {
+            board.make_move(mv);
+            last_move = mv;
+        } else if let Some(result) = board.game_result() {
             if show_gui {
                 gui::print_game_result(&board, result);
             }
@@ -105,29 +109,35 @@ fn run_game(
             } else {
                 return Ok(None);
             }
-            }
         }
     }
 }
 
-fn play_batch_game() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Number of games:");
-    let mut buffer = String::new();
-    std::io::stdin().read_line(&mut buffer).unwrap();
-    let num_games: usize = buffer.trim().parse().expect("Invalid number");
+fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let num_games;
+    let player_a;
+    let player_b;
+    if is_bench {
+        num_games = 10000;
+        player_a = PlayerType::RandomMove;
+        player_b = PlayerType::RandomMove;
+    } else {
+        println!("Number of games:");
+        num_games = read_usize_input()?;
 
-    let player_a = loop {
-        match ask_player_type("A") {
-            Ok(t) => break t,
-            Err(e) => println!("Error: {e:?}, Try again."),
-        }
-    };
+        player_a = loop {
+            match ask_player_type("A") {
+                Ok(t) => break t,
+                Err(e) => println!("Error: {e:?}, Try again."),
+            }
+        };
 
-    let player_b = loop {
-        match ask_player_type("B") {
-            Ok(t) => break t,
-            Err(e) => println!("Error: {e:?}, Try again."),
-        }
+        player_b = loop {
+            match ask_player_type("B") {
+                Ok(t) => break t,
+                Err(e) => println!("Error: {e:?}, Try again."),
+            }
+        };
     };
 
     let mut a_wins = 0;
