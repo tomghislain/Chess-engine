@@ -63,14 +63,14 @@ fn run_game(
     show_gui: bool,
 ) -> Result<Option<game::Color>, Box<dyn std::error::Error>> {
     let mut board = game::Board::new();
-    let mut last_move = game::Move::new(65, 65, 0, None);
+    let mut last_move = game::Move::new(0, 0, game::Piece::WK, None, None, 0);
 
     loop {
         if show_gui {
             crossterm::terminal::enable_raw_mode()?;
             gui::display_board(
                 &board,
-                Some((last_move.from, last_move.to)),
+                Some((last_move.from(), last_move.to())),
                 None,
                 Vec::new(),
             );
@@ -86,7 +86,7 @@ fn run_game(
                 if !show_gui {
                     return Err("Input not supported in batch mode.".into());
                 }
-                gui::get_player_move(&mut board, Some((last_move.from, last_move.to)))
+                gui::get_player_move(&mut board, Some((last_move.from(), last_move.to())))
             }
             PlayerType::RandomMove => ai::get_random_move(&mut board),
             _ => unimplemented!(),

@@ -138,33 +138,47 @@ pub fn get_player_move(
             if let Some(clicked_sq) = clicked {
                 if from.is_some() {
                     let valid_moves: Vec<&game::Move> =
-                        moves_from.iter().filter(|m| m.to == clicked_sq).collect();
+                        moves_from.iter().filter(|m| m.to() == clicked_sq).collect();
                     let move_number = valid_moves.len();
                     if move_number == 1 {
                         return Some(*valid_moves[0]);
                     } else if move_number > 1 {
                         let promotion_piece = get_promotion_piece(clicked_sq, board.side_to_move);
-                        return Some(**valid_moves
-                            .iter()
-                            .filter(|&m| m.promotion == Some(promotion_piece))
-                            .collect::<Vec<&&game::Move>>()[0]);
+                        return Some(
+                            **valid_moves
+                                .iter()
+                                .filter(|&m| m.promotion() == Some(promotion_piece))
+                                .collect::<Vec<&&game::Move>>()[0],
+                        );
                     } else {
                         from = Some(clicked_sq);
                         moves_from = moves
                             .iter()
-                            .filter_map(|&m| if m.from == clicked_sq { Some(m) } else { None })
+                            .filter_map(|&m| {
+                                if m.from() == clicked_sq {
+                                    Some(m)
+                                } else {
+                                    None
+                                }
+                            })
                             .collect();
                     }
                 } else {
                     from = Some(clicked_sq);
                     moves_from = moves_from
                         .iter()
-                        .filter_map(|&m| if m.from == clicked_sq { Some(m) } else { None })
+                        .filter_map(|&m| {
+                            if m.from() == clicked_sq {
+                                Some(m)
+                            } else {
+                                None
+                            }
+                        })
                         .collect();
                 }
             }
             let possible_to_squares = if moves_from != moves {
-                moves_from.iter().map(|m| m.to).collect()
+                moves_from.iter().map(|m| m.to()).collect()
             } else {
                 Vec::new()
             };
