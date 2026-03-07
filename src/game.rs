@@ -1588,32 +1588,32 @@ impl Board {
     }
 }
 
-// pub fn perft(board: &mut Board, depth: u8) -> u64 {
-//     if depth == 0 {
-//         return 1;
-//     }
+pub fn perft(board: &mut Board, depth: u8) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
 
-//     let mut nodes = 0;
-//     let moves = board.get_pseudo_legal_moves();
+    let mut nodes = 0;
+    let moves = board.get_pseudo_legal_moves();
 
-//     for m in moves {
-//         // println!("Making move at depth {}: {:?}", depth, m);
-//         board.make_move(m);
+    for m in moves {
+        // println!("Making move at depth {}: {:?}", depth, m);
+        board.make_move(m);
 
-//         let illegal = if m.flags & CASTLING_FLAG != 0 {
-//             board.is_castle_legal(m, board.side_to_move.flip())
-//         } else {
-//             board.is_king_checked(board.side_to_move.flip())
-//         };
-//         if !illegal {
-//             nodes += perft(board, depth - 1);
-//         }
+        let illegal = if m.flags() & CASTLING_FLAG != 0 {
+            board.is_castle_legal(m, board.side_to_move.flip())
+        } else {
+            board.is_king_checked(board.side_to_move.flip())
+        };
+        if !illegal {
+            nodes += perft(board, depth - 1);
+        }
 
-//         // println!("Unmaking move at depth {}: {:?}", depth, m);
-//         board.unmake_move(m);
-//     }
-//     nodes
-// }
+        // println!("Unmaking move at depth {}: {:?}", depth, m);
+        board.unmake_move(m);
+    }
+    nodes
+}
 
 pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = board.get_pseudo_legal_moves();

@@ -24,16 +24,20 @@ impl std::fmt::Display for PlayerType {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if env::args().any(|arg| arg == "--bench") {
         play_batch_game(true)
+    } else if env::args().any(|arg| arg == "--perft") {
+        let mut board = game::Board::new();
+        let depth = 7;
+        let start = std::time::Instant::now();
+        println!(
+            "Number of moves at depth {}: {}",
+            depth,
+            game::perft(&mut board, depth)
+        );
+        println!("Time taken: {:?}", start.elapsed());
+        Ok(())
     } else {
         ask_action()
     }
-    // let board = game::Board::new();
-    // let depth = 5;
-    // println!(
-    //     "Number of moves at depth {}: {}",
-    //     depth,
-    //     game::perft(&mut board, depth)
-    // );
 }
 
 fn read_usize_input() -> Result<usize, Box<dyn std::error::Error>> {
