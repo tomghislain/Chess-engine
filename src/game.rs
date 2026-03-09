@@ -1442,8 +1442,24 @@ impl Board {
         moves
     }
 
-    fn is_square_attacked(&self, sq: u8, by: Color) -> bool {
-        let (pawns, knights, bishops, rooks, queens, king) = match by {
+    fn would_be_in_check(&self, mv: Move) -> bool {
+        debug_assert!(mv.flags() & CASTLING_FLAG == 0);
+        let flags = mv.flags();
+        let is_capture = flags & CAPTURE_FLAG != 0;
+        let is_en_passant = flags & EN_PASSANT_FLAG != 0;
+        let us = self.side_to_move;
+        let enemy = us.flip();
+        let from = mv.from();
+        let to = mv.to();
+
+        let (
+            mut enemy_pawns,
+            mut enemy_knights,
+            mut enemy_bishops,
+            mut enemy_rooks,
+            mut enemy_queens,
+            enemy_king,
+        ) = match enemy {
             Color::White => (
                 self.pieces[Piece::WP as usize],
                 self.pieces[Piece::WN as usize],
@@ -1461,37 +1477,67 @@ impl Board {
                 self.pieces[Piece::BK as usize],
             ),
         };
+        // Update occupancy
+        let mut new_occ = self.occ;
+        new_occ ^= 1 << from;
+        if is_capture {
+            let c_sq = if is_en_passant {
+                if us == Color::White { to - 8 } else { to + 8 }
+            } else {
+                to
+            };
+            match mv.captured_piece() {
+                Piece::WP | Piece::BP => enemy_pawns ^= 1 << c_sq,
+                Piece::WN | Piece::BN => enemy_knights ^= 1 << c_sq,
+                Piece::WB | Piece::BB => enemy_bishops ^= 1 << c_sq,
+                Piece::WR | Piece::BR => enemy_rooks ^= 1 << c_sq,
+                Piece::WQ | Piece::BQ => enemy_queens ^= 1 << c_sq,
+                _ => (),
+            }
+            new_occ ^= 1 << c_sq;
+        }
+        new_occ ^= 1 << to;
+        let king_sq = if matches!(mv.moved_piece(), Piece::WK | Piece::BK) {
+            to
+        } else {
+            let king_piece = if us == Color::White {
+                Piece::WK
+            } else {
+                Piece::BK
+            };
+            self.pieces[king_piece as usize].trailing_zeros() as u8
+        };
 
         // Pawn attacks
-        match by {
+        match enemy {
             Color::White => {
-                if (Self::BLACK_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
+                if (Self::BLACK_PAWN_ATTACKS[king_sq as usize] & enemy_pawns) != 0 {
                     return true;
                 }
             }
             Color::Black => {
-                if (Self::WHITE_PAWN_ATTACKS[sq as usize] & pawns) != 0 {
+                if (Self::WHITE_PAWN_ATTACKS[king_sq as usize] & enemy_pawns) != 0 {
                     return true;
                 }
             }
         }
 
         // Knight attacks
-        if (Self::KNIGHT_ATTACKS[sq as usize] & knights) != 0 {
+        if (Self::KNIGHT_ATTACKS[king_sq as usize] & enemy_knights) != 0 {
             return true;
         }
 
         // Bishop/Queen attacks
         for &dir in &Self::BISHOP_DIRECTIONS {
-            let ray = Self::RAYS[dir][sq as usize];
-            let blockers = ray & self.occ;
+            let ray = Self::RAYS[dir][king_sq as usize];
+            let blockers = ray & new_occ;
             if blockers != 0 {
                 let first = if Self::dir_is_pos(dir) {
                     blockers.trailing_zeros() as u8
                 } else {
                     (63 - blockers.leading_zeros()) as u8
                 };
-                if (1u64 << first) & (bishops | queens) != 0 {
+                if (1u64 << first) & (enemy_bishops | enemy_queens) != 0 {
                     return true;
                 }
             }
@@ -1499,55 +1545,53 @@ impl Board {
 
         // Rook/Queen attacks
         for &dir in &Self::ROOK_DIRECTIONS {
-            let ray = Self::RAYS[dir][sq as usize];
-            let blockers = ray & self.occ;
+            let ray = Self::RAYS[dir][king_sq as usize];
+            let blockers = ray & new_occ;
             if blockers != 0 {
                 let first = if Self::dir_is_pos(dir) {
                     blockers.trailing_zeros() as u8
                 } else {
                     (63 - blockers.leading_zeros()) as u8
                 };
-                if (1u64 << first) & (rooks | queens) != 0 {
+                if (1u64 << first) & (enemy_rooks | enemy_queens) != 0 {
                     return true;
                 }
             }
         }
 
         // King attacks
-        if (Self::KING_ATTACKS[sq as usize] & king) != 0 {
+        if (Self::KING_ATTACKS[king_sq as usize] & enemy_king) != 0 {
             return true;
         }
 
         false
     }
 
-    fn is_king_checked(&self, color: Color) -> bool {
-        match color {
-            Color::White => self.is_square_attacked(
-                self.pieces[Piece::WK as usize].trailing_zeros() as u8,
-                Color::Black,
-            ),
-            Color::Black => self.is_square_attacked(
-                self.pieces[Piece::BK as usize].trailing_zeros() as u8,
-                Color::White,
-            ),
-        }
-    }
-
-    fn is_castle_legal(&self, mv: Move, by: Color) -> bool {
-        let through = match mv.to() {
-            6 => 5,
-            2 => 3,
-            62 => 61,
-            58 => 59,
-            _ => panic!("Castle check for non castle move"),
+    fn would_castle_be_in_check(&self, mv: Move) -> bool {
+        debug_assert!(mv.flags() & CASTLING_FLAG != 0);
+        let us = self.side_to_move;
+        let (king_piece, king_sq) = if us == Color::White {
+            (Piece::WK, 4)
+        } else {
+            (Piece::BK, 60)
         };
 
-        let enemy = by.flip();
+        // Squares the king occupies or passes through (including start)
+        let squares_to_check = match mv.to() {
+            6 => [4, 5, 6],     // white O‑O
+            2 => [4, 3, 2],     // white O‑O‑O
+            62 => [60, 61, 62], // black O‑O
+            58 => [60, 59, 58], // black O‑O‑O
+            _ => unreachable!(),
+        };
 
-        self.is_square_attacked(mv.from(), enemy)
-            || self.is_square_attacked(through, enemy)
-            || self.is_square_attacked(mv.to(), enemy)
+        for &sq in &squares_to_check {
+            let fake_move = Move::new(king_sq, sq, king_piece, Piece::None, Piece::None, 0);
+            if self.would_be_in_check(fake_move) {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn is_50_move_draw(&self) -> bool {
@@ -1573,7 +1617,23 @@ impl Board {
 
         let legal_moves = get_legal_moves(self);
         if legal_moves.is_empty() {
-            if self.is_king_checked(self.side_to_move) {
+            let is_king_checked = {
+                let (king_piece, king_sq) = if self.side_to_move == Color::White {
+                    (
+                        Piece::WK,
+                        self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+                    )
+                } else {
+                    (
+                        Piece::BK,
+                        self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+                    )
+                };
+                let fake_move =
+                    Move::new(king_sq, king_sq, king_piece, Piece::None, Piece::None, 0);
+                self.would_be_in_check(fake_move)
+            };
+            if is_king_checked {
                 return Some(win);
             } else {
                 return Some(draw);
@@ -1596,21 +1656,19 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
     let mut nodes = 0;
     let moves = board.get_pseudo_legal_moves();
 
-    for m in moves {
+    for mv in moves {
         // println!("Making move at depth {}: {:?}", depth, m);
-        board.make_move(m);
-
-        let illegal = if m.flags() & CASTLING_FLAG != 0 {
-            board.is_castle_legal(m, board.side_to_move.flip())
+        let illegal = if mv.flags() & CASTLING_FLAG != 0 {
+            board.would_castle_be_in_check(mv)
         } else {
-            board.is_king_checked(board.side_to_move.flip())
+            board.would_be_in_check(mv)
         };
         if !illegal {
+            board.make_move(mv);
             nodes += perft(board, depth - 1);
+            board.unmake_move(mv);
         }
-
         // println!("Unmaking move at depth {}: {:?}", depth, m);
-        board.unmake_move(m);
     }
     nodes
 }
@@ -1618,18 +1676,15 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
 pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = board.get_pseudo_legal_moves();
     let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
-    let us = board.side_to_move;
     for mv in pseudo_legal_moves {
-        board.make_move(mv);
         let illegal = if mv.flags() & CASTLING_FLAG != 0 {
-            board.is_castle_legal(mv, us)
+            board.would_castle_be_in_check(mv)
         } else {
-            board.is_king_checked(us)
+            board.would_be_in_check(mv)
         };
         if !illegal {
             legal_moves.push(mv);
         }
-        board.unmake_move(mv);
     }
 
     legal_moves
