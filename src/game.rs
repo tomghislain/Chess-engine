@@ -546,7 +546,7 @@ impl Board {
         self.history.push(self.zobrist);
     }
 
-    fn unmake_move(&mut self, mv: Move) {
+    pub fn unmake_move(&mut self, mv: Move) {
         // Pop undo stack and restore previous state
         let undo = self.undo_stack.pop().unwrap();
         self.castling = undo.castling;
@@ -1618,29 +1618,29 @@ impl Board {
             .is_some()
     }
 
-    pub fn game_result(&mut self) -> Option<bool> {
+    pub fn is_king_checked(&self) -> bool {
+        let (king_piece, king_sq) = if self.side_to_move == Color::White {
+            (
+                Piece::WK,
+                self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+            )
+        } else {
+            (
+                Piece::BK,
+                self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+            )
+        };
+        let fake_move = Move::new(king_sq, king_sq, king_piece, Piece::None, Piece::None, 0);
+        self.would_be_in_check(fake_move)
+    }
+
+    pub fn game_result(&self) -> Option<bool> {
         let win = true;
         let draw = false;
 
         let legal_moves = get_legal_moves(self);
         if legal_moves.is_empty() {
-            let is_king_checked = {
-                let (king_piece, king_sq) = if self.side_to_move == Color::White {
-                    (
-                        Piece::WK,
-                        self.pieces[Piece::WK as usize].trailing_zeros() as u8,
-                    )
-                } else {
-                    (
-                        Piece::BK,
-                        self.pieces[Piece::BK as usize].trailing_zeros() as u8,
-                    )
-                };
-                let fake_move =
-                    Move::new(king_sq, king_sq, king_piece, Piece::None, Piece::None, 0);
-                self.would_be_in_check(fake_move)
-            };
-            if is_king_checked {
+            if self.is_king_checked() {
                 return Some(win);
             } else {
                 return Some(draw);

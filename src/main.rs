@@ -8,7 +8,7 @@ use std::env;
 enum PlayerType {
     Input,
     RandomMove,
-    MirrorMove,
+    Negamax,
 }
 
 impl std::fmt::Display for PlayerType {
@@ -16,7 +16,7 @@ impl std::fmt::Display for PlayerType {
         match self {
             PlayerType::Input => write!(f, "Input"),
             PlayerType::RandomMove => write!(f, "RandomMove"),
-            PlayerType::MirrorMove => write!(f, "MirrorMove"),
+            PlayerType::Negamax => write!(f, "Negamax"),
         }
     }
 }
@@ -100,7 +100,7 @@ fn run_game(
                 gui::get_player_move(&mut board, Some((last_move.from(), last_move.to())))
             }
             PlayerType::RandomMove => ai::get_random_move(&mut board),
-            _ => unimplemented!(),
+            PlayerType::Negamax => ai::search_root(&mut board, 4),
         };
 
         if let Some(mv) = mv_result {
@@ -205,7 +205,7 @@ fn get_player_types() -> Result<(PlayerType, PlayerType), Box<dyn std::error::Er
 
 fn ask_player_type(color: &str) -> Result<PlayerType, Box<dyn std::error::Error>> {
     use PlayerType as P;
-    let player_types = [P::Input, P::RandomMove, P::MirrorMove];
+    let player_types = [P::Input, P::RandomMove, P::Negamax];
     println!("Choose {color} player type");
     for (i, t) in player_types.iter().enumerate() {
         println!("{i}. {t}");
