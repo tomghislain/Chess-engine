@@ -120,7 +120,7 @@ pub fn get_player_move(
     previous_move_squares: Option<(u8, u8)>,
 ) -> Option<game::Move> {
     let moves = game::get_legal_moves(board);
-    if moves.is_empty() || board.is_50_move_draw() || board.is_threefol_repetition() {
+    if moves.is_empty() || board.is_50_move_draw() || board.is_threefold_repetition() {
         return None;
     };
     let mut stdout = std::io::stdout();

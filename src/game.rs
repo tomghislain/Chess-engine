@@ -1605,7 +1605,7 @@ impl Board {
         self.halfmove_clock >= 100
     }
 
-    pub fn is_threefol_repetition(&self) -> bool {
+    pub fn is_threefold_repetition(&self) -> bool {
         let current = self.zobrist;
         let limit = self.halfmove_clock as usize / 2;
         self.history
@@ -1647,7 +1647,7 @@ impl Board {
             }
         }
 
-        if self.is_50_move_draw() || self.is_threefol_repetition() {
+        if self.is_50_move_draw() || self.is_threefold_repetition() {
             return Some(draw);
         }
 
@@ -1675,7 +1675,7 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
     nodes
 }
 
-pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
+pub fn get_legal_moves(board: &Board) -> Vec<Move> {
     let pseudo_legal_moves = board.get_pseudo_legal_moves();
     let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
     for mv in pseudo_legal_moves {
