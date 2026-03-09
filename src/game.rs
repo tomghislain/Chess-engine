@@ -1576,12 +1576,11 @@ impl Board {
             (Piece::BK, 60)
         };
 
-        // Squares the king occupies or passes through (including start)
         let squares_to_check = match mv.to() {
-            6 => [4, 5, 6],     // white O‑O
-            2 => [4, 3, 2],     // white O‑O‑O
-            62 => [60, 61, 62], // black O‑O
-            58 => [60, 59, 58], // black O‑O‑O
+            6 => [4, 5, 6],
+            2 => [4, 3, 2],
+            62 => [60, 61, 62],
+            58 => [60, 59, 58],
             _ => unreachable!(),
         };
 
@@ -1592,6 +1591,14 @@ impl Board {
             }
         }
         false
+    }
+
+    fn is_move_legal(&self, mv: Move) -> bool {
+        if mv.flags() & CASTLING_FLAG != 0 {
+            !self.would_castle_be_in_check(mv)
+        } else {
+            !self.would_be_in_check(mv)
+        }
     }
 
     pub fn is_50_move_draw(&self) -> bool {
@@ -1658,12 +1665,7 @@ pub fn perft(board: &mut Board, depth: u8) -> u64 {
 
     for mv in moves {
         // println!("Making move at depth {}: {:?}", depth, m);
-        let illegal = if mv.flags() & CASTLING_FLAG != 0 {
-            board.would_castle_be_in_check(mv)
-        } else {
-            board.would_be_in_check(mv)
-        };
-        if !illegal {
+        if board.is_move_legal(mv) {
             board.make_move(mv);
             nodes += perft(board, depth - 1);
             board.unmake_move(mv);
@@ -1677,12 +1679,7 @@ pub fn get_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = board.get_pseudo_legal_moves();
     let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
     for mv in pseudo_legal_moves {
-        let illegal = if mv.flags() & CASTLING_FLAG != 0 {
-            board.would_castle_be_in_check(mv)
-        } else {
-            board.would_be_in_check(mv)
-        };
-        if !illegal {
+        if board.is_move_legal(mv) {
             legal_moves.push(mv);
         }
     }
