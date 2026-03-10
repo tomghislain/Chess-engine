@@ -1638,7 +1638,7 @@ impl Board {
         let win = true;
         let draw = false;
 
-        let legal_moves = get_legal_moves(self);
+        let legal_moves = self.get_legal_moves();
         if legal_moves.is_empty() {
             if self.is_king_checked() {
                 return Some(win);
@@ -1653,36 +1653,36 @@ impl Board {
 
         None
     }
-}
 
-pub fn perft(board: &mut Board, depth: u8) -> u64 {
-    if depth == 0 {
-        return 1;
-    }
-
-    let mut nodes = 0;
-    let moves = board.get_pseudo_legal_moves();
-
-    for mv in moves {
-        // println!("Making move at depth {}: {:?}", depth, m);
-        if board.is_move_legal(mv) {
-            board.make_move(mv);
-            nodes += perft(board, depth - 1);
-            board.unmake_move(mv);
+    pub fn get_legal_moves(&self) -> Vec<Move> {
+        let pseudo_legal_moves = self.get_pseudo_legal_moves();
+        let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
+        for mv in pseudo_legal_moves {
+            if self.is_move_legal(mv) {
+                legal_moves.push(mv);
+            }
         }
-        // println!("Unmaking move at depth {}: {:?}", depth, m);
-    }
-    nodes
-}
 
-pub fn get_legal_moves(board: &Board) -> Vec<Move> {
-    let pseudo_legal_moves = board.get_pseudo_legal_moves();
-    let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
-    for mv in pseudo_legal_moves {
-        if board.is_move_legal(mv) {
-            legal_moves.push(mv);
+        legal_moves
+    }
+
+    pub fn perft(&mut self, depth: u8) -> u64 {
+        if depth == 0 {
+            return 1;
         }
-    }
 
-    legal_moves
+        let mut nodes = 0;
+        let moves = self.get_pseudo_legal_moves();
+
+        for mv in moves {
+            // println!("Making move at depth {}: {:?}", depth, m);
+            if self.is_move_legal(mv) {
+                self.make_move(mv);
+                nodes += self.perft(depth - 1);
+                self.unmake_move(mv);
+            }
+            // println!("Unmaking move at depth {}: {:?}", depth, m);
+        }
+        nodes
+    }
 }

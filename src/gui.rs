@@ -119,7 +119,7 @@ pub fn get_player_move(
     board: &mut game::Board,
     previous_move_squares: Option<(u8, u8)>,
 ) -> Option<game::Move> {
-    let moves = game::get_legal_moves(board);
+    let moves = board.get_legal_moves();
     if moves.is_empty() || board.is_50_move_draw() || board.is_threefold_repetition() {
         return None;
     };

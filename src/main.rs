@@ -28,11 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut board = game::Board::new();
         let depth = 7;
         let start = std::time::Instant::now();
-        println!(
-            "Number of moves at depth {}: {}",
-            depth,
-            game::perft(&mut board, depth)
-        );
+        println!("Number of moves at depth {}: {}", depth, board.perft(depth));
         println!("Time taken: {:?}", start.elapsed());
         Ok(())
     } else {

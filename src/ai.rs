@@ -1,9 +1,9 @@
-use crate::game::{self, get_legal_moves};
+use crate::game;
 use rand::{self, Rng, thread_rng};
 use std::collections::HashMap;
 
 pub fn get_random_move(board: &mut game::Board) -> Option<game::Move> {
-    let moves = game::get_legal_moves(board);
+    let moves = board.get_legal_moves();
     if moves.is_empty() || board.is_50_move_draw() || board.is_threefold_repetition() {
         return None;
     };
@@ -69,7 +69,7 @@ fn negamax(
         return evaluate(board);
     }
 
-    let moves = get_legal_moves(board);
+    let moves = board.get_legal_moves();
     if moves.is_empty() {
         return evaluate(board);
     }
@@ -120,7 +120,7 @@ pub fn search_root(board: &mut game::Board, depth: u8) -> Option<game::Move> {
     let mut best_score = i8::MIN;
     let mut best_move = None;
 
-    let moves = get_legal_moves(board);
+    let moves = board.get_legal_moves();
     for mv in moves {
         board.make_move(mv);
         let score = -negamax(board, depth, alpha, beta, &mut tt);
