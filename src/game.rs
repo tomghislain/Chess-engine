@@ -1601,11 +1601,11 @@ impl Board {
         }
     }
 
-    pub fn is_50_move_draw(&self) -> bool {
+    fn is_50_move_draw(&self) -> bool {
         self.halfmove_clock >= 100
     }
 
-    pub fn is_threefold_repetition(&self) -> bool {
+    fn is_threefold_repetition(&self) -> bool {
         let current = self.zobrist;
         let limit = self.halfmove_clock as usize / 2;
         self.history
@@ -1616,6 +1616,59 @@ impl Board {
             .filter(|&&h| h == current)
             .nth(2)
             .is_some()
+    }
+
+    fn bishops_same_color(&self, bishops: u64) -> bool {
+        const LIGHT_SQUARES: u64 = 0x55AA55AA55AA55AA;
+        (bishops & LIGHT_SQUARES) == bishops || (bishops & LIGHT_SQUARES) == 0
+    }
+
+    fn insufficient_minors(&self, knights: u64, bishops: u64) -> bool {
+        if knights != 0 && bishops == 0 {
+            true
+        } else if bishops != 0 && knights == 0 {
+            self.bishops_same_color(bishops)
+        } else {
+            false
+        }
+    }
+
+    fn is_insufficient_material(&self) -> bool {
+        if (self.pieces[Piece::WP as usize]
+            | self.pieces[Piece::BP as usize]
+            | self.pieces[Piece::WR as usize]
+            | self.pieces[Piece::BR as usize]
+            | self.pieces[Piece::WQ as usize]
+            | self.pieces[Piece::BQ as usize])
+            != 0
+        {
+            return false;
+        }
+        let w_knights = self.pieces[Piece::WN as usize];
+        let b_knights = self.pieces[Piece::BN as usize];
+        let w_bishops = self.pieces[Piece::WB as usize];
+        let b_bishops = self.pieces[Piece::BB as usize];
+
+        let white_has_minors = (w_knights | w_bishops) != 0;
+        let black_has_minors = (b_knights | b_bishops) != 0;
+
+        match (white_has_minors, black_has_minors) {
+            (false, false) => true,
+            (false, true) => self.insufficient_minors(b_knights, b_bishops),
+            (true, false) => self.insufficient_minors(w_knights, w_bishops),
+            (true, true) => {
+                if (w_knights | b_knights) != 0 {
+                    false
+                } else {
+                    let bishops = w_bishops | b_bishops;
+                    self.bishops_same_color(bishops)
+                }
+            }
+        }
+    }
+
+    pub fn is_draw(&self) -> bool {
+        self.is_50_move_draw() || self.is_threefold_repetition() || self.is_insufficient_material()
     }
 
     pub fn is_king_checked(&self) -> bool {
@@ -1647,7 +1700,7 @@ impl Board {
             }
         }
 
-        if self.is_50_move_draw() || self.is_threefold_repetition() {
+        if self.is_draw() {
             return Some(draw);
         }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub fn get_random_move(board: &mut game::Board) -> Option<game::Move> {
     let moves = board.get_legal_moves();
-    if moves.is_empty() || board.is_50_move_draw() || board.is_threefold_repetition() {
+    if moves.is_empty() || board.is_draw() {
         return None;
     };
     let mut rng = thread_rng();
