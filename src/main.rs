@@ -187,6 +187,7 @@ fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
             }
             None => draws += 1,
         }
+        if !is_bench {println!("Finished game {game_index}");};
     }
     println!("\nBatch finished!");
     println!("Player A ({player_a}) wins: {a_wins}");

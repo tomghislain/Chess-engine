@@ -24,11 +24,13 @@ struct Node {
 
 impl Node {
     fn new(board: &game::Board, parent: NodeIndex, parent_move: game::Move) -> Self {
-        let moves = if !board.is_draw() {
+        let mut moves = if !board.is_draw() {
             board.get_legal_moves()
         } else {
             Vec::new()
         };
+        let mut rng = rand::rng();
+        moves.shuffle(&mut rng);
         Node {
             parent: Some(parent),
             children: Vec::new(),
@@ -71,9 +73,12 @@ impl Tree {
 
         for &child_idx in &parent.children {
             let child = &self.nodes[child_idx];
-            assert!(child.visits != 0);
-            let uct = child.wins / child.visits as f32
-                + c * (parent_visits.ln() / child.visits as f32).sqrt();
+            let uct = if child.visits == 0 {
+                f32::INFINITY
+            } else {
+                (1.0 - child.wins) / child.visits as f32
+                    + c * (parent_visits.ln() / child.visits as f32).sqrt()
+            };
 
             if uct > best_uct {
                 best_uct = uct;
@@ -87,8 +92,7 @@ impl Tree {
     fn select(&self, board: &mut game::Board) -> NodeIndex {
         let mut current: NodeIndex = 0; // Start at root
         while self.nodes[current].untried_moves.is_empty()
-            && !(self.nodes[current].untried_moves.is_empty()
-                && self.nodes[current].children.is_empty())
+            && !self.nodes[current].children.is_empty()
         {
             if let Some(best_child_index) = self.best_ucb_child(current) {
                 board.make_move(self.nodes[best_child_index].move_from_parent.unwrap());
@@ -163,9 +167,9 @@ pub fn mcts_search(board: &mut game::Board, iteration_number: usize) -> Option<g
         tree.backpropagate(new_node, score);
     }
 
-    if let Some(best_child) = tree.best_ucb_child(0) {
-        tree.nodes[best_child].move_from_parent
-    } else {
-        None
-    }
+    tree.nodes[0]
+        .children
+        .iter()
+        .max_by_key(|&&c| tree.nodes[c].visits)
+        .and_then(|&c| tree.nodes[c].move_from_parent)
 }
