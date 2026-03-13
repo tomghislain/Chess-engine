@@ -1,6 +1,7 @@
-mod ai;
 mod game;
 mod gui;
+mod mcts;
+mod negamax;
 
 use std::env;
 
@@ -9,6 +10,7 @@ enum PlayerType {
     Input,
     RandomMove,
     Negamax,
+    Mcts,
 }
 
 impl std::fmt::Display for PlayerType {
@@ -17,6 +19,7 @@ impl std::fmt::Display for PlayerType {
             PlayerType::Input => write!(f, "Input"),
             PlayerType::RandomMove => write!(f, "RandomMove"),
             PlayerType::Negamax => write!(f, "Negamax"),
+            PlayerType::Mcts => write!(f, "Monte Carlo Tree Search"),
         }
     }
 }
@@ -95,8 +98,9 @@ fn run_game(
                 }
                 gui::get_player_move(&mut board, Some((last_move.from(), last_move.to())))
             }
-            PlayerType::RandomMove => ai::get_random_move(&mut board),
-            PlayerType::Negamax => ai::search_root(&mut board, 4),
+            PlayerType::RandomMove => mcts::get_random_move(&mut board),
+            PlayerType::Negamax => negamax::search_root(&mut board, 4),
+            PlayerType::Mcts => mcts::mcts_search(&mut board, 10000),
         };
 
         if let Some(mv) = mv_result {
@@ -106,7 +110,13 @@ fn run_game(
 
             board.make_move(mv);
             last_move = mv;
-        } else if let Some(result) = board.game_result() {
+        } else {
+            let result = if board.get_legal_moves().is_empty() {
+                board.is_king_checked()
+            } else {
+                false
+            };
+
             if show_gui {
                 gui::print_game_result(&board, result);
             }
@@ -201,7 +211,7 @@ fn get_player_types() -> Result<(PlayerType, PlayerType), Box<dyn std::error::Er
 
 fn ask_player_type(color: &str) -> Result<PlayerType, Box<dyn std::error::Error>> {
     use PlayerType as P;
-    let player_types = [P::Input, P::RandomMove, P::Negamax];
+    let player_types = [P::Input, P::RandomMove, P::Negamax, P::Mcts];
     println!("Choose {color} player type");
     for (i, t) in player_types.iter().enumerate() {
         println!("{i}. {t}");

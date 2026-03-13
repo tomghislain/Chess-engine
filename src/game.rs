@@ -39,6 +39,7 @@ pub const WQ_CASTLE: u8 = 1 << 1;
 pub const BK_CASTLE: u8 = 1 << 2;
 pub const BQ_CASTLE: u8 = 1 << 3;
 
+#[derive(Clone)]
 pub struct Undo {
     pub castling: u8,
     pub en_passant: u8,
@@ -56,6 +57,7 @@ struct Zobrist {
     en_passant: [u64; 8],
 }
 
+#[derive(Clone)]
 pub struct Board {
     pub pieces: [u64; 12],
     pub white_occ: u64,
@@ -179,17 +181,17 @@ fn init_zobrist() -> Zobrist {
     let mut piece_square = [[0; 64]; 12];
     for i in 0..12 {
         for j in 0..64 {
-            piece_square[i][j] = rng.r#gen();
+            piece_square[i][j] = rng.next_u64();
         }
     }
-    let side = rng.r#gen();
+    let side = rng.next_u64();
     let mut castling = [0; 4];
     for i in 0..4 {
-        castling[i] = rng.r#gen();
+        castling[i] = rng.next_u64();
     }
     let mut en_passant = [0; 8];
     for i in 0..8 {
-        en_passant[i] = rng.r#gen();
+        en_passant[i] = rng.next_u64();
     }
     Zobrist {
         piece_square,
@@ -1685,26 +1687,6 @@ impl Board {
         };
         let fake_move = Move::new(king_sq, king_sq, king_piece, Piece::None, Piece::None, 0);
         self.would_be_in_check(fake_move)
-    }
-
-    pub fn game_result(&self) -> Option<bool> {
-        let win = true;
-        let draw = false;
-
-        let legal_moves = self.get_legal_moves();
-        if legal_moves.is_empty() {
-            if self.is_king_checked() {
-                return Some(win);
-            } else {
-                return Some(draw);
-            }
-        }
-
-        if self.is_draw() {
-            return Some(draw);
-        }
-
-        None
     }
 
     pub fn get_legal_moves(&self) -> Vec<Move> {

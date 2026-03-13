@@ -1,16 +1,5 @@
 use crate::game;
-use rand::{self, Rng, thread_rng};
 use std::collections::HashMap;
-
-pub fn get_random_move(board: &mut game::Board) -> Option<game::Move> {
-    let moves = board.get_legal_moves();
-    if moves.is_empty() || board.is_draw() {
-        return None;
-    };
-    let mut rng = thread_rng();
-    let index = rng.gen_range(0..moves.len());
-    Some(moves[index])
-}
 
 enum TTFlag {
     Exact,
@@ -27,17 +16,8 @@ struct TTEntry {
 
 type TranspositionTable = HashMap<u64, TTEntry>;
 
-fn evaluate(board: &game::Board) -> i8 {
-    match board.game_result() {
-        None => 0,
-        Some(win) => {
-            if win {
-                -1
-            } else {
-                0
-            }
-        }
-    }
+fn evaluate(_board: &game::Board) -> i8 {
+    1 // TODO: return material value
 }
 
 fn negamax(
@@ -111,7 +91,7 @@ fn negamax(
 }
 
 pub fn search_root(board: &mut game::Board, depth: u8) -> Option<game::Move> {
-    if board.game_result().is_some() {
+    if board.is_draw() || board.get_pseudo_legal_moves().is_empty() {
         return None;
     }
     let mut tt = TranspositionTable::new();
