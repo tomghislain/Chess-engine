@@ -76,7 +76,7 @@ impl Tree {
             let uct = if child.visits == 0 {
                 f32::INFINITY
             } else {
-                (1.0 - child.wins) / child.visits as f32
+                (1.0 - child.wins / child.visits as f32)
                     + c * (parent_visits.ln() / child.visits as f32).sqrt()
             };
 
@@ -158,9 +158,10 @@ pub fn mcts_search(board: &mut game::Board, iteration_number: usize) -> Option<g
 
     // Create tree
     let mut tree = Tree::new(board);
+    let mut iteration_board;
     // Iterate over the tree
     for _ in 0..iteration_number {
-        let mut iteration_board = board.clone();
+        iteration_board = board.clone();
         let selected_node = tree.select(&mut iteration_board);
         let new_node = tree.expand(&mut iteration_board, selected_node);
         let score = tree.rollout(&mut iteration_board);

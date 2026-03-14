@@ -34,6 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Number of moves at depth {}: {}", depth, board.perft(depth));
         println!("Time taken: {:?}", start.elapsed());
         Ok(())
+    } else if env::args().any(|arg| arg == "--mcts") {
+        let mut board = game::Board::new();
+        let iterations = 100_000;
+        mcts::mcts_search(&mut board, iterations);
+        Ok(())
     } else {
         ask_action()
     }
@@ -100,7 +105,7 @@ fn run_game(
             }
             PlayerType::RandomMove => mcts::get_random_move(&mut board),
             PlayerType::Negamax => negamax::search_root(&mut board, 4),
-            PlayerType::Mcts => mcts::mcts_search(&mut board, 10000),
+            PlayerType::Mcts => mcts::mcts_search(&mut board, 100),
         };
 
         if let Some(mv) = mv_result {
@@ -135,7 +140,7 @@ fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
     let player_a;
     let player_b;
     if is_bench {
-        num_games = 10000;
+        num_games = 10_000;
         player_a = PlayerType::RandomMove;
         player_b = PlayerType::RandomMove;
     } else {
@@ -187,7 +192,9 @@ fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
             }
             None => draws += 1,
         }
-        if !is_bench {println!("Finished game {game_index}");};
+        if !is_bench {
+            println!("Finished game {game_index}");
+        };
     }
     println!("\nBatch finished!");
     println!("Player A ({player_a}) wins: {a_wins}");
