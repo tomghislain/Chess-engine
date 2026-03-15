@@ -1048,161 +1048,384 @@ impl Board {
         }
     }
 
-    const DIR_N: usize = 0;
-    const DIR_NE: usize = 1;
-    const DIR_E: usize = 2;
-    const DIR_SE: usize = 3;
-    const DIR_S: usize = 4;
-    const DIR_SW: usize = 5;
-    const DIR_W: usize = 6;
-    const DIR_NW: usize = 7;
-
-    const fn compute_rays() -> [[u64; 64]; 8] {
-        let mut rays = [[0; 64]; 8];
-        let mut sq = 0;
+    const fn gen_rook_masks() -> [u64; 64] {
+        let mut masks = [0; 64];
+        let mut sq: usize = 0;
         while sq < 64 {
-            let r = sq / 8;
-            let f = sq % 8;
-
-            let mut i = r + 1;
-            while i < 8 {
-                let target = i * 8 + f;
-                rays[Self::DIR_N][sq] |= 1 << target;
-                i += 1;
+            let rank = sq / 8;
+            let file = sq % 8;
+            let mut mask = 0;
+            // North
+            let mut r = rank + 1;
+            while r < 7 {
+                mask |= 1u64 << (r * 8 + file);
+                r += 1;
             }
-
-            let mut i = r as i8 - 1;
-            while i >= 0 {
-                let target = i as usize * 8 + f;
-                rays[Self::DIR_S][sq] |= 1 << target;
-                i -= 1;
+            // South
+            let mut r = rank as i32 - 1;
+            while r > 0 {
+                mask |= 1u64 << (r * 8 + file as i32);
+                r -= 1;
             }
-
-            let mut j = f + 1;
-            while j < 8 {
-                let target = r * 8 + j;
-                rays[Self::DIR_E][sq] |= 1 << target;
-                j += 1;
+            // East
+            let mut f = file + 1;
+            while f < 7 {
+                mask |= 1u64 << (rank * 8 + f);
+                f += 1;
             }
-
-            let mut j = f as i8 - 1;
-            while j >= 0 {
-                let target = r * 8 + j as usize;
-                rays[Self::DIR_W][sq] |= 1 << target;
-                j -= 1;
+            // West
+            let mut f = file as i32 - 1;
+            while f > 0 {
+                mask |= 1u64 << (rank as i32 * 8 + f);
+                f -= 1;
             }
-
-            let mut i = r + 1;
-            let mut j = f + 1;
-            while i < 8 && j < 8 {
-                let target = i * 8 + j;
-                rays[Self::DIR_NE][sq] |= 1 << target;
-                i += 1;
-                j += 1;
-            }
-
-            let mut i = r + 1;
-            let mut j = f as i8 - 1;
-            while i < 8 && j >= 0 {
-                let target = i * 8 + j as usize;
-                rays[Self::DIR_NW][sq] |= 1 << target;
-                i += 1;
-                j -= 1;
-            }
-
-            let mut i = r as i8 - 1;
-            let mut j = f + 1;
-            while i >= 0 && j < 8 {
-                let target = i as usize * 8 + j;
-                rays[Self::DIR_SE][sq] |= 1 << target;
-                i -= 1;
-                j += 1;
-            }
-
-            let mut i = r as i8 - 1;
-            let mut j = f as i8 - 1;
-            while i >= 0 && j >= 0 {
-                let target = i as usize * 8 + j as usize;
-                rays[Self::DIR_SW][sq] |= 1 << target;
-                i -= 1;
-                j -= 1;
-            }
-
+            masks[sq] = mask;
             sq += 1;
         }
-
-        rays
+        masks
     }
 
-    const RAYS: [[u64; 64]; 8] = Self::compute_rays();
-
-    const fn dir_is_pos(d: usize) -> bool {
-        matches!(d, Self::DIR_N | Self::DIR_NE | Self::DIR_E | Self::DIR_NW)
-    }
-
-    fn gen_sliding_moves(&self, sq: u8, directions: &[usize]) -> u64 {
-        let mut attacks = 0u64;
-        for dir in directions {
-            let ray = Self::RAYS[*dir][sq as usize];
-            let blockers = ray & self.occ;
-            if blockers == 0 {
-                attacks |= ray;
-            } else {
-                let first_blocker_sq = if Self::dir_is_pos(*dir) {
-                    blockers.trailing_zeros() as u8
-                } else {
-                    (63 - blockers.leading_zeros()) as u8
-                };
-                attacks |= ray & !(Self::RAYS[*dir][first_blocker_sq as usize]);
+    const fn gen_bishop_masks() -> [u64; 64] {
+        let mut masks = [0; 64];
+        let mut sq: usize = 0;
+        while sq < 64 {
+            let rank = sq / 8;
+            let file = sq % 8;
+            let mut mask = 0;
+            // North-East
+            let mut r = rank + 1;
+            let mut f = file + 1;
+            while r < 7 && f < 7 {
+                mask |= 1u64 << (r * 8 + f);
+                r += 1;
+                f += 1;
             }
+            // North-West
+            let mut r = rank + 1;
+            let mut f = file as i32 - 1;
+            while r < 7 && f > 0 {
+                mask |= 1u64 << (r as i32 * 8 + f);
+                r += 1;
+                f -= 1;
+            }
+            // South-East
+            let mut r = rank as i32 - 1;
+            let mut f = file + 1;
+            while r > 0 && f < 7 {
+                mask |= 1u64 << (r * 8 + f as i32);
+                r -= 1;
+                f += 1;
+            }
+            // South-West
+            let mut r = rank as i32 - 1;
+            let mut f = file as i32 - 1;
+            while r > 0 && f > 0 {
+                mask |= 1u64 << (r as u32 * 8 + f as u32);
+                r -= 1;
+                f -= 1;
+            }
+            masks[sq] = mask;
+            sq += 1;
+        }
+        masks
+    }
+
+    const ROOK_MASKS: [u64; 64] = Self::gen_rook_masks();
+    const BISHOP_MASKS: [u64; 64] = Self::gen_bishop_masks();
+
+    // Magics and shift from https://github.com/SebLague/Chess-Coding-Adventure/
+    const ROOK_MAGIC_NUMBERS: [u64; 64] = [
+        468374916371625120,
+        18428729537625841661,
+        2531023729696186408,
+        6093370314119450896,
+        13830552789156493815,
+        16134110446239088507,
+        12677615322350354425,
+        5404321144167858432,
+        2111097758984580,
+        18428720740584907710,
+        17293734603602787839,
+        4938760079889530922,
+        7699325603589095390,
+        9078693890218258431,
+        578149610753690728,
+        9496543503900033792,
+        1155209038552629657,
+        9224076274589515780,
+        1835781998207181184,
+        509120063316431138,
+        16634043024132535807,
+        18446673631917146111,
+        9623686630121410312,
+        4648737361302392899,
+        738591182849868645,
+        1732936432546219272,
+        2400543327507449856,
+        5188164365601475096,
+        10414575345181196316,
+        1162492212166789136,
+        9396848738060210946,
+        622413200109881612,
+        7998357718131801918,
+        7719627227008073923,
+        16181433497662382080,
+        18441958655457754079,
+        1267153596645440,
+        18446726464209379263,
+        1214021438038606600,
+        4650128814733526084,
+        9656144899867951104,
+        18444421868610287615,
+        3695311799139303489,
+        10597006226145476632,
+        18436046904206950398,
+        18446726472933277663,
+        3458977943764860944,
+        39125045590687766,
+        9227453435446560384,
+        6476955465732358656,
+        1270314852531077632,
+        2882448553461416064,
+        11547238928203796481,
+        1856618300822323264,
+        2573991788166144,
+        4936544992551831040,
+        13690941749405253631,
+        15852669863439351807,
+        18302628748190527413,
+        12682135449552027479,
+        13830554446930287982,
+        18302628782487371519,
+        7924083509981736956,
+        4734295326018586370,
+    ];
+    const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
+        16509839532542417919,
+        14391803910955204223,
+        1848771770702627364,
+        347925068195328958,
+        5189277761285652493,
+        3750937732777063343,
+        18429848470517967340,
+        17870072066711748607,
+        16715520087474960373,
+        2459353627279607168,
+        7061705824611107232,
+        8089129053103260512,
+        7414579821471224013,
+        9520647030890121554,
+        17142940634164625405,
+        9187037984654475102,
+        4933695867036173873,
+        3035992416931960321,
+        15052160563071165696,
+        5876081268917084809,
+        1153484746652717320,
+        6365855841584713735,
+        2463646859659644933,
+        1453259901463176960,
+        9808859429721908488,
+        2829141021535244552,
+        576619101540319252,
+        5804014844877275314,
+        4774660099383771136,
+        328785038479458864,
+        2360590652863023124,
+        569550314443282,
+        17563974527758635567,
+        11698101887533589556,
+        5764964460729992192,
+        6953579832080335136,
+        1318441160687747328,
+        8090717009753444376,
+        16751172641200572929,
+        5558033503209157252,
+        17100156536247493656,
+        7899286223048400564,
+        4845135427956654145,
+        2368485888099072,
+        2399033289953272320,
+        6976678428284034058,
+        3134241565013966284,
+        8661609558376259840,
+        17275805361393991679,
+        15391050065516657151,
+        11529206229534274423,
+        9876416274250600448,
+        16432792402597134585,
+        11975705497012863580,
+        11457135419348969979,
+        9763749252098620046,
+        16960553411078512574,
+        15563877356819111679,
+        14994736884583272463,
+        9441297368950544394,
+        14537646123432199168,
+        9888547162215157388,
+        18140215579194907366,
+        18374682062228545019,
+    ];
+
+    const ROOK_SHIFTS: [u64; 64] = [
+        52, 52, 52, 52, 52, 52, 52, 52, 53, 53, 53, 54, 53, 53, 54, 53, 53, 54, 54, 54, 53, 53, 54,
+        53, 53, 54, 53, 53, 54, 54, 54, 53, 52, 54, 53, 53, 53, 53, 54, 53, 52, 53, 54, 54, 53, 53,
+        54, 53, 53, 54, 54, 54, 53, 53, 54, 53, 52, 53, 53, 53, 53, 53, 53, 52,
+    ];
+    const BISHOP_SHIFTS: [u64; 64] = [
+        58, 60, 59, 59, 59, 59, 60, 58, 60, 59, 59, 59, 59, 59, 59, 60, 59, 59, 57, 57, 57, 57, 59,
+        59, 59, 59, 57, 55, 55, 57, 59, 59, 59, 59, 57, 55, 55, 57, 59, 59, 59, 59, 57, 57, 57, 57,
+        59, 59, 60, 60, 59, 59, 59, 59, 60, 60, 58, 60, 59, 59, 59, 59, 59, 58,
+    ];
+
+    const fn rook_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
+        let mut attacks = 0;
+        let rank = sq / 8;
+        let file = sq % 8;
+        // North
+        let mut r = rank + 1;
+        while r < 8 {
+            let target = r * 8 + file;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            r += 1;
+        }
+        // South
+        let mut r = rank as i32 - 1;
+        while r >= 0 {
+            let target = (r * 8 + file as i32) as usize;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            r -= 1;
+        }
+        // East
+        let mut f = file + 1;
+        while f < 8 {
+            let target = rank * 8 + f;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            f += 1;
+        }
+        // West
+        let mut f = file as i32 - 1;
+        while f >= 0 {
+            let target = rank * 8 + f as usize;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            f -= 1;
         }
         attacks
     }
 
-    const BISHOP_DIRECTIONS: [usize; 4] = [Self::DIR_SW, Self::DIR_SE, Self::DIR_NW, Self::DIR_NE];
-
-    fn get_bishop_moves(
-        &self,
-        moves: &mut Vec<Move>,
-        bishop_piece: Piece,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
-        let mut bishops = self.pieces[bishop_piece as usize];
-        while bishops != 0 {
-            let from = bishops.trailing_zeros() as u8;
-            bishops &= bishops - 1;
-            let attacks = self.gen_sliding_moves(from, &Self::BISHOP_DIRECTIONS) & !our_occ;
-            let mut non_captures = attacks & !their_occ;
-            let mut captures = attacks & their_occ;
-            while non_captures != 0 {
-                let to = non_captures.trailing_zeros() as u8;
-                non_captures &= non_captures - 1;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    bishop_piece,
-                    Piece::None,
-                    Piece::None,
-                    0,
-                ));
+    const fn bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
+        let mut attacks = 0;
+        let rank = sq / 8;
+        let file = sq % 8;
+        // North-East
+        let mut r = rank + 1;
+        let mut f = file + 1;
+        while r < 8 && f < 8 {
+            let target = r * 8 + f;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
             }
-            while captures != 0 {
-                let to = captures.trailing_zeros() as u8;
-                captures &= captures - 1;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    bishop_piece,
-                    self.piece_at_for(to, self.side_to_move.flip()),
-                    Piece::None,
-                    CAPTURE_FLAG,
-                ));
-            }
+            r += 1;
+            f += 1;
         }
+        // North-West
+        let mut r = rank + 1;
+        let mut f = file as i32 - 1;
+        while r < 8 && f >= 0 {
+            let target = r * 8 + f as usize;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            r += 1;
+            f -= 1;
+        }
+        // South-East
+        let mut r = rank as i32 - 1;
+        let mut f = file + 1;
+        while r >= 0 && f < 8 {
+            let target = (r * 8 + f as i32) as usize;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            r -= 1;
+            f += 1;
+        }
+        // South-West
+        let mut r = rank as i32 - 1;
+        let mut f = file as i32 - 1;
+        while r >= 0 && f >= 0 {
+            let target = (r * 8 + f) as usize;
+            attacks |= 1 << target;
+            if blockers & (1 << target) != 0 {
+                break;
+            }
+            r -= 1;
+            f -= 1;
+        }
+        attacks
     }
 
-    const ROOK_DIRECTIONS: [usize; 4] = [Self::DIR_N, Self::DIR_S, Self::DIR_W, Self::DIR_E];
+    const fn gen_rook_attacks() -> [[u64; 4096]; 64] {
+        let mut table = [[0; 4096]; 64];
+        let mut sq = 0;
+        while sq < 64 {
+            let mask = Self::ROOK_MASKS[sq];
+            let magic = Self::ROOK_MAGIC_NUMBERS[sq];
+            let shift = Self::ROOK_SHIFTS[sq];
+            let mut blockers = 0;
+            loop {
+                let attacks = Self::rook_attacks_for_blockers(sq, blockers);
+                let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
+                table[sq][index] = attacks;
+                blockers = (blockers.wrapping_sub(mask)) & mask;
+                if blockers == 0 {
+                    break;
+                }
+            }
+            sq += 1;
+        }
+        table
+    }
+
+    const fn gen_bishop_attacks() -> [[u64; 512]; 64] {
+        let mut table = [[0; 512]; 64];
+        let mut sq = 0;
+        while sq < 64 {
+            let mask = Self::BISHOP_MASKS[sq];
+            let magic = Self::BISHOP_MAGIC_NUMBERS[sq];
+            let shift = Self::BISHOP_SHIFTS[sq];
+            let mut blockers = 0;
+            loop {
+                let attacks = Self::bishop_attacks_for_blockers(sq, blockers);
+                let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
+                table[sq][index] = attacks;
+                blockers = (blockers.wrapping_sub(mask)) & mask;
+                if blockers == 0 {
+                    break;
+                }
+            }
+            sq += 1;
+        }
+        table
+    }
+
+    const ROOK_ATTACKS: [[u64; 4096]; 64] = Self::gen_rook_attacks();
+    const BISHOP_ATTACKS: [[u64; 512]; 64] = Self::gen_bishop_attacks();
 
     fn get_rook_moves(
         &self,
@@ -1215,24 +1438,73 @@ impl Board {
         while rooks != 0 {
             let from = rooks.trailing_zeros() as u8;
             rooks &= rooks - 1;
-            let attacks = self.gen_sliding_moves(from, &Self::ROOK_DIRECTIONS) & !our_occ;
-            let mut non_captures = attacks & !their_occ;
-            let mut captures = attacks & their_occ;
-            while non_captures != 0 {
-                let to = non_captures.trailing_zeros() as u8;
-                non_captures &= non_captures - 1;
-                moves.push(Move::new(from, to, rook_piece, Piece::None, Piece::None, 0));
+
+            let mask = Self::ROOK_MASKS[from as usize];
+            let blockers = self.occ & mask;
+            let idx = (blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[from as usize])
+                >> Self::ROOK_SHIFTS[from as usize]) as usize;
+            let attacks = Self::ROOK_ATTACKS[from as usize][idx] & !our_occ;
+
+            let mut remaining = attacks;
+            while remaining != 0 {
+                let to = remaining.trailing_zeros() as u8;
+                remaining &= remaining - 1;
+
+                let flag = if (1u64 << to) & their_occ != 0 {
+                    CAPTURE_FLAG
+                } else {
+                    0
+                };
+                let captured = if flag != 0 {
+                    self.piece_at_for(to, self.side_to_move.flip())
+                } else {
+                    Piece::None
+                };
+                moves.push(Move::new(from, to, rook_piece, captured, Piece::None, flag));
             }
-            while captures != 0 {
-                let to = captures.trailing_zeros() as u8;
-                captures &= captures - 1;
+        }
+    }
+
+    fn get_bishop_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        bishop_piece: Piece,
+        our_occ: u64,
+        their_occ: u64,
+    ) {
+        let mut bishops = self.pieces[bishop_piece as usize];
+        while bishops != 0 {
+            let from = bishops.trailing_zeros() as u8;
+            bishops &= bishops - 1;
+
+            let mask = Self::BISHOP_MASKS[from as usize];
+            let blockers = self.occ & mask;
+            let idx = (blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[from as usize])
+                >> Self::BISHOP_SHIFTS[from as usize]) as usize;
+            let attacks = Self::BISHOP_ATTACKS[from as usize][idx] & !our_occ;
+
+            let mut remaining = attacks;
+            while remaining != 0 {
+                let to = remaining.trailing_zeros() as u8;
+                remaining &= remaining - 1;
+
+                let flag = if (1u64 << to) & their_occ != 0 {
+                    CAPTURE_FLAG
+                } else {
+                    0
+                };
+                let captured = if flag != 0 {
+                    self.piece_at_for(to, self.side_to_move.flip())
+                } else {
+                    Piece::None
+                };
                 moves.push(Move::new(
                     from,
                     to,
-                    rook_piece,
-                    self.piece_at_for(to, self.side_to_move.flip()),
+                    bishop_piece,
+                    captured,
                     Piece::None,
-                    CAPTURE_FLAG,
+                    flag,
                 ));
             }
         }
@@ -1245,47 +1517,50 @@ impl Board {
         our_occ: u64,
         their_occ: u64,
     ) {
-        const QUEEN_DIRECTIONS: [usize; 8] = [
-            Board::DIR_N,
-            Board::DIR_NE,
-            Board::DIR_E,
-            Board::DIR_SE,
-            Board::DIR_S,
-            Board::DIR_SW,
-            Board::DIR_W,
-            Board::DIR_NW,
-        ];
-
         let mut queens = self.pieces[queen_piece as usize];
-
         while queens != 0 {
             let from = queens.trailing_zeros() as u8;
             queens &= queens - 1;
-            let attacks = self.gen_sliding_moves(from, &QUEEN_DIRECTIONS) & !our_occ;
-            let mut non_captures = attacks & !their_occ;
-            let mut captures = attacks & their_occ;
-            while non_captures != 0 {
-                let to = non_captures.trailing_zeros() as u8;
-                non_captures &= non_captures - 1;
+
+            // Rook part
+            let rook_mask = Self::ROOK_MASKS[from as usize];
+            let rook_blockers = self.occ & rook_mask;
+            let rook_idx = (rook_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[from as usize])
+                >> Self::ROOK_SHIFTS[from as usize]) as usize;
+            let rook_attacks = Self::ROOK_ATTACKS[from as usize][rook_idx];
+
+            // Bishop part
+            let bishop_mask = Self::BISHOP_MASKS[from as usize];
+            let bishop_blockers = self.occ & bishop_mask;
+            let bishop_idx = (bishop_blockers
+                .wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[from as usize])
+                >> Self::BISHOP_SHIFTS[from as usize]) as usize;
+            let bishop_attacks = Self::BISHOP_ATTACKS[from as usize][bishop_idx];
+
+            let attacks = (rook_attacks | bishop_attacks) & !our_occ;
+
+            let mut remaining = attacks;
+            while remaining != 0 {
+                let to = remaining.trailing_zeros() as u8;
+                remaining &= remaining - 1;
+
+                let flag = if (1u64 << to) & their_occ != 0 {
+                    CAPTURE_FLAG
+                } else {
+                    0
+                };
+                let captured = if flag != 0 {
+                    self.piece_at_for(to, self.side_to_move.flip())
+                } else {
+                    Piece::None
+                };
                 moves.push(Move::new(
                     from,
                     to,
                     queen_piece,
+                    captured,
                     Piece::None,
-                    Piece::None,
-                    0,
-                ));
-            }
-            while captures != 0 {
-                let to = captures.trailing_zeros() as u8;
-                captures &= captures - 1;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    queen_piece,
-                    self.piece_at_for(to, self.side_to_move.flip()),
-                    Piece::None,
-                    CAPTURE_FLAG,
+                    flag,
                 ));
             }
         }
@@ -1530,35 +1805,24 @@ impl Board {
         }
 
         // Bishop/Queen attacks
-        for &dir in &Self::BISHOP_DIRECTIONS {
-            let ray = Self::RAYS[dir][king_sq as usize];
-            let blockers = ray & new_occ;
-            if blockers != 0 {
-                let first = if Self::dir_is_pos(dir) {
-                    blockers.trailing_zeros() as u8
-                } else {
-                    (63 - blockers.leading_zeros()) as u8
-                };
-                if (1u64 << first) & (enemy_bishops | enemy_queens) != 0 {
-                    return true;
-                }
-            }
+        let bishop_mask = Self::BISHOP_MASKS[king_sq as usize];
+        let bishop_blockers = new_occ & bishop_mask;
+        let bishop_idx = (bishop_blockers
+            .wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[king_sq as usize])
+            >> Self::BISHOP_SHIFTS[king_sq as usize]) as usize;
+        let bishop_attacks = Self::BISHOP_ATTACKS[king_sq as usize][bishop_idx];
+        if (bishop_attacks & (enemy_bishops | enemy_queens)) != 0 {
+            return true;
         }
 
         // Rook/Queen attacks
-        for &dir in &Self::ROOK_DIRECTIONS {
-            let ray = Self::RAYS[dir][king_sq as usize];
-            let blockers = ray & new_occ;
-            if blockers != 0 {
-                let first = if Self::dir_is_pos(dir) {
-                    blockers.trailing_zeros() as u8
-                } else {
-                    (63 - blockers.leading_zeros()) as u8
-                };
-                if (1u64 << first) & (enemy_rooks | enemy_queens) != 0 {
-                    return true;
-                }
-            }
+        let rook_mask = Self::ROOK_MASKS[king_sq as usize];
+        let rook_blockers = new_occ & rook_mask;
+        let rook_idx = (rook_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[king_sq as usize])
+            >> Self::ROOK_SHIFTS[king_sq as usize]) as usize;
+        let rook_attacks = Self::ROOK_ATTACKS[king_sq as usize][rook_idx];
+        if (rook_attacks & (enemy_rooks | enemy_queens)) != 0 {
+            return true;
         }
 
         // King attacks
