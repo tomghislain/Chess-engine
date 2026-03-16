@@ -9,8 +9,8 @@ use std::env;
 enum PlayerType {
     Input,
     RandomMove,
-    Negamax,
-    Mcts,
+    Negamax { depth: u8 },
+    Mcts { iterations: usize },
 }
 
 impl std::fmt::Display for PlayerType {
@@ -18,8 +18,10 @@ impl std::fmt::Display for PlayerType {
         match self {
             PlayerType::Input => write!(f, "Input"),
             PlayerType::RandomMove => write!(f, "RandomMove"),
-            PlayerType::Negamax => write!(f, "Negamax"),
-            PlayerType::Mcts => write!(f, "Monte Carlo Tree Search"),
+            PlayerType::Negamax { depth } => write!(f, "Negamax (depth {})", depth),
+            PlayerType::Mcts { iterations } => {
+                write!(f, "Monte Carlo Tree Search ({} iterations)", iterations)
+            }
         }
     }
 }
@@ -104,8 +106,8 @@ fn run_game(
                 gui::get_player_move(&mut board, Some((last_move.from(), last_move.to())))
             }
             PlayerType::RandomMove => mcts::get_random_move(&mut board),
-            PlayerType::Negamax => negamax::search_root(&mut board, 4),
-            PlayerType::Mcts => mcts::mcts_search(&mut board, 100),
+            PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
+            PlayerType::Mcts { iterations } => mcts::mcts_search(&mut board, iterations),
         };
 
         if let Some(mv) = mv_result {
@@ -219,14 +221,26 @@ fn get_player_types() -> Result<(PlayerType, PlayerType), Box<dyn std::error::Er
 
 fn ask_player_type(color: &str) -> Result<PlayerType, Box<dyn std::error::Error>> {
     use PlayerType as P;
-    let player_types = [P::Input, P::RandomMove, P::Negamax, P::Mcts];
+    let player_types = [P::Input, P::RandomMove, P::Negamax { depth: 0 }, P::Mcts { iterations: 0 }];
     println!("Choose {color} player type");
     for (i, t) in player_types.iter().enumerate() {
         println!("{i}. {t}");
     }
     let index = read_usize_input()?;
-    player_types
-        .get(index)
-        .copied()
-        .ok_or("Choice out of range".into())
+        let player_type = match index {
+        0 => P::Input,
+        1 => P::RandomMove,
+        2 => {
+            println!("Search depth :");
+            let depth = read_usize_input()? as u8;
+            P::Negamax { depth }
+        }
+        3 => {
+            println!("Number of iterations :");
+            let iterations = read_usize_input()?;
+            P::Mcts { iterations }
+        }
+        _ => return Err("Choice out of range".into()),
+    };
+    Ok(player_type)
 }
