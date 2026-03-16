@@ -60,8 +60,7 @@ struct Zobrist {
 #[derive(Clone)]
 pub struct Board {
     pub pieces: [u64; 12],
-    pub white_occ: u64,
-    pub black_occ: u64,
+    pub color_occ: [u64; 2],
     pub occ: u64,
 
     pub side_to_move: Color,
@@ -279,21 +278,22 @@ impl Board {
         pieces[Piece::BQ as usize] = 1 << 59;
         pieces[Piece::BK as usize] = 1 << 60;
 
-        let white_occ = pieces[Piece::WP as usize]
-            | pieces[Piece::WN as usize]
-            | pieces[Piece::WB as usize]
-            | pieces[Piece::WR as usize]
-            | pieces[Piece::WQ as usize]
-            | pieces[Piece::WK as usize];
+        let color_occ = [
+            pieces[Piece::WP as usize]
+                | pieces[Piece::WN as usize]
+                | pieces[Piece::WB as usize]
+                | pieces[Piece::WR as usize]
+                | pieces[Piece::WQ as usize]
+                | pieces[Piece::WK as usize],
+            pieces[Piece::BP as usize]
+                | pieces[Piece::BN as usize]
+                | pieces[Piece::BB as usize]
+                | pieces[Piece::BR as usize]
+                | pieces[Piece::BQ as usize]
+                | pieces[Piece::BK as usize],
+        ];
 
-        let black_occ = pieces[Piece::BP as usize]
-            | pieces[Piece::BN as usize]
-            | pieces[Piece::BB as usize]
-            | pieces[Piece::BR as usize]
-            | pieces[Piece::BQ as usize]
-            | pieces[Piece::BK as usize];
-
-        let occ = white_occ | black_occ;
+        let occ = color_occ[0] | color_occ[1];
 
         let side_to_move = Color::White;
 
@@ -307,8 +307,7 @@ impl Board {
 
         let mut board = Board {
             pieces,
-            white_occ,
-            black_occ,
+            color_occ,
             occ,
             side_to_move,
             castling,
@@ -433,16 +432,8 @@ impl Board {
 
         // Update occupancy
         self.occ ^= moving_side_mask ^ opponent_side_mask;
-        match self.side_to_move {
-            Color::White => {
-                self.white_occ ^= moving_side_mask;
-                self.black_occ ^= opponent_side_mask;
-            }
-            Color::Black => {
-                self.black_occ ^= moving_side_mask;
-                self.white_occ ^= opponent_side_mask;
-            }
-        }
+        self.color_occ[self.side_to_move as usize] ^= moving_side_mask;
+        self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
 
         // Update en passant square
         if self.en_passant < 64 {
@@ -618,16 +609,8 @@ impl Board {
 
         // Recompute occupancy
         self.occ ^= moving_side_mask ^ opponent_side_mask;
-        match self.side_to_move {
-            Color::White => {
-                self.white_occ ^= moving_side_mask;
-                self.black_occ ^= opponent_side_mask;
-            }
-            Color::Black => {
-                self.black_occ ^= moving_side_mask;
-                self.white_occ ^= opponent_side_mask;
-            }
-        }
+        self.color_occ[self.side_to_move as usize] ^= moving_side_mask;
+        self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
     }
 
     const fn gen_white_pawn_attacks() -> [u64; 64] {
@@ -720,7 +703,7 @@ impl Board {
             let from = captures.trailing_zeros() as u8;
             captures &= captures - 1;
 
-            let mut attacks = Self::WHITE_PAWN_ATTACKS[from as usize] & self.black_occ;
+            let mut attacks = Self::WHITE_PAWN_ATTACKS[from as usize] & self.color_occ[1];
 
             while attacks != 0 {
                 let to = attacks.trailing_zeros() as u8;
@@ -898,7 +881,7 @@ impl Board {
             let from = captures.trailing_zeros() as u8;
             captures &= captures - 1;
 
-            let mut attacks = Self::BLACK_PAWN_ATTACKS[from as usize] & self.white_occ;
+            let mut attacks = Self::BLACK_PAWN_ATTACKS[from as usize] & self.color_occ[0];
 
             while attacks != 0 {
                 let to = attacks.trailing_zeros() as u8;
@@ -1011,19 +994,14 @@ impl Board {
 
     const KNIGHT_ATTACKS: [u64; 64] = Self::gen_knight_attacks();
 
-    fn get_knight_moves(
-        &self,
-        moves: &mut Vec<Move>,
-        knight_piece: Piece,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
+    fn get_knight_moves(&self, moves: &mut Vec<Move>, knight_piece: Piece) {
+        let us = self.side_to_move;
         let mut knights = self.pieces[knight_piece as usize];
         while knights != 0 {
             let from = knights.trailing_zeros() as u8;
             knights &= knights - 1;
 
-            let mut attacks = Self::KNIGHT_ATTACKS[from as usize] & !our_occ;
+            let mut attacks = Self::KNIGHT_ATTACKS[from as usize] & !self.color_occ[us as usize];
 
             while attacks != 0 {
                 let to = attacks.trailing_zeros() as u8;
@@ -1031,7 +1009,7 @@ impl Board {
 
                 let mut captured_piece = Piece::None;
                 let mut flag = 0;
-                if (1u64 << to) & their_occ != 0 {
+                if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
                     captured_piece = self.piece_at_for(to, self.side_to_move.flip());
                     flag = CAPTURE_FLAG;
                 };
@@ -1427,13 +1405,8 @@ impl Board {
     const ROOK_ATTACKS: [[u64; 4096]; 64] = Self::gen_rook_attacks();
     const BISHOP_ATTACKS: [[u64; 512]; 64] = Self::gen_bishop_attacks();
 
-    fn get_rook_moves(
-        &self,
-        moves: &mut Vec<Move>,
-        rook_piece: Piece,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
+    fn get_rook_moves(&self, moves: &mut Vec<Move>, rook_piece: Piece) {
+        let us = self.side_to_move;
         let mut rooks = self.pieces[rook_piece as usize];
         while rooks != 0 {
             let from = rooks.trailing_zeros() as u8;
@@ -1443,14 +1416,14 @@ impl Board {
             let blockers = self.occ & mask;
             let idx = (blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[from as usize])
                 >> Self::ROOK_SHIFTS[from as usize]) as usize;
-            let attacks = Self::ROOK_ATTACKS[from as usize][idx] & !our_occ;
+            let attacks = Self::ROOK_ATTACKS[from as usize][idx] & !self.color_occ[us as usize];
 
             let mut remaining = attacks;
             while remaining != 0 {
                 let to = remaining.trailing_zeros() as u8;
                 remaining &= remaining - 1;
 
-                let flag = if (1u64 << to) & their_occ != 0 {
+                let flag = if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
                     CAPTURE_FLAG
                 } else {
                     0
@@ -1465,13 +1438,8 @@ impl Board {
         }
     }
 
-    fn get_bishop_moves(
-        &self,
-        moves: &mut Vec<Move>,
-        bishop_piece: Piece,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
+    fn get_bishop_moves(&self, moves: &mut Vec<Move>, bishop_piece: Piece) {
+        let us = self.side_to_move;
         let mut bishops = self.pieces[bishop_piece as usize];
         while bishops != 0 {
             let from = bishops.trailing_zeros() as u8;
@@ -1481,14 +1449,14 @@ impl Board {
             let blockers = self.occ & mask;
             let idx = (blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[from as usize])
                 >> Self::BISHOP_SHIFTS[from as usize]) as usize;
-            let attacks = Self::BISHOP_ATTACKS[from as usize][idx] & !our_occ;
+            let attacks = Self::BISHOP_ATTACKS[from as usize][idx] & !self.color_occ[us as usize];
 
             let mut remaining = attacks;
             while remaining != 0 {
                 let to = remaining.trailing_zeros() as u8;
                 remaining &= remaining - 1;
 
-                let flag = if (1u64 << to) & their_occ != 0 {
+                let flag = if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
                     CAPTURE_FLAG
                 } else {
                     0
@@ -1510,13 +1478,8 @@ impl Board {
         }
     }
 
-    fn get_queen_moves(
-        &self,
-        moves: &mut Vec<Move>,
-        queen_piece: Piece,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
+    fn get_queen_moves(&self, moves: &mut Vec<Move>, queen_piece: Piece) {
+        let us = self.side_to_move;
         let mut queens = self.pieces[queen_piece as usize];
         while queens != 0 {
             let from = queens.trailing_zeros() as u8;
@@ -1537,14 +1500,14 @@ impl Board {
                 >> Self::BISHOP_SHIFTS[from as usize]) as usize;
             let bishop_attacks = Self::BISHOP_ATTACKS[from as usize][bishop_idx];
 
-            let attacks = (rook_attacks | bishop_attacks) & !our_occ;
+            let attacks = (rook_attacks | bishop_attacks) & !self.color_occ[us as usize];
 
             let mut remaining = attacks;
             while remaining != 0 {
                 let to = remaining.trailing_zeros() as u8;
                 remaining &= remaining - 1;
 
-                let flag = if (1u64 << to) & their_occ != 0 {
+                let flag = if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
                     CAPTURE_FLAG
                 } else {
                     0
@@ -1605,26 +1568,21 @@ impl Board {
 
     const KING_ATTACKS: [u64; 64] = Self::gen_king_attacks();
 
-    fn get_king_moves(
-        &self,
-        moves: &mut Vec<Move>,
-        king_piece: Piece,
-        our_occ: u64,
-        their_occ: u64,
-    ) {
+    fn get_king_moves(&self, moves: &mut Vec<Move>, king_piece: Piece) {
+        let us = self.side_to_move;
         let king = self.pieces[king_piece as usize];
         let from = king.trailing_zeros() as u8;
         debug_assert!(from <= 64);
 
         // Generate the classical moves
-        let mut attacks = Self::KING_ATTACKS[from as usize] & !our_occ;
+        let mut attacks = Self::KING_ATTACKS[from as usize] & !self.color_occ[us as usize];
         while attacks != 0 {
             let to = attacks.trailing_zeros() as u8;
             attacks &= attacks - 1;
 
             let mut captured_piece = Piece::None;
             let mut flag = 0;
-            if their_occ & (1u64 << to) != 0 {
+            if self.color_occ[us.flip() as usize] & (1u64 << to) != 0 {
                 captured_piece = self.piece_at_for(to, self.side_to_move.flip());
                 flag = CAPTURE_FLAG;
             };
@@ -1695,24 +1653,20 @@ impl Board {
         // Single self.side_to_move match
         match self.side_to_move {
             Color::White => {
-                let our_occ = self.white_occ;
-                let their_occ = self.black_occ;
                 self.get_white_pawn_moves(&mut moves);
-                self.get_knight_moves(&mut moves, Piece::WN, our_occ, their_occ);
-                self.get_bishop_moves(&mut moves, Piece::WB, our_occ, their_occ);
-                self.get_rook_moves(&mut moves, Piece::WR, our_occ, their_occ);
-                self.get_queen_moves(&mut moves, Piece::WQ, our_occ, their_occ);
-                self.get_king_moves(&mut moves, Piece::WK, our_occ, their_occ);
+                self.get_knight_moves(&mut moves, Piece::WN);
+                self.get_bishop_moves(&mut moves, Piece::WB);
+                self.get_rook_moves(&mut moves, Piece::WR);
+                self.get_queen_moves(&mut moves, Piece::WQ);
+                self.get_king_moves(&mut moves, Piece::WK);
             }
             Color::Black => {
-                let our_occ = self.black_occ;
-                let their_occ = self.white_occ;
                 self.get_black_pawn_moves(&mut moves);
-                self.get_knight_moves(&mut moves, Piece::BN, our_occ, their_occ);
-                self.get_bishop_moves(&mut moves, Piece::BB, our_occ, their_occ);
-                self.get_rook_moves(&mut moves, Piece::BR, our_occ, their_occ);
-                self.get_queen_moves(&mut moves, Piece::BQ, our_occ, their_occ);
-                self.get_king_moves(&mut moves, Piece::BK, our_occ, their_occ);
+                self.get_knight_moves(&mut moves, Piece::BN);
+                self.get_bishop_moves(&mut moves, Piece::BB);
+                self.get_rook_moves(&mut moves, Piece::BR);
+                self.get_queen_moves(&mut moves, Piece::BQ);
+                self.get_king_moves(&mut moves, Piece::BK);
             }
         }
 
