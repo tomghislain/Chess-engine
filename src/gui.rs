@@ -71,9 +71,14 @@ pub fn display_board(
         let piece = board.piece_at(sq);
         // TODO: match piece enum with corresponding ascii character
         let pieces_colors = [WHITE_PIECES_COLOR, BLACK_PIECES_COLOR];
-        let (piece_string, piece_color) = piece
-            .map(|p| (PIECE_STRINGS[p as usize % 6], pieces_colors[p as usize / 6]))
-            .unwrap_or((EMPTY_SQUARE_STRING, style::Color::Red));
+        let (piece_string, piece_color) = if piece != game::Piece::None {
+            (
+                PIECE_STRINGS[piece as usize % 6],
+                pieces_colors[piece as usize / 6],
+            )
+        } else {
+            (EMPTY_SQUARE_STRING, style::Color::Red)
+        };
         let _ = queue!(stdout, crossterm::style::SetForegroundColor(piece_color),);
         let (col, row) = sq_to_top_left(sq);
         for line in 0..SQ_HEIGHT {
