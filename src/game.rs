@@ -1599,9 +1599,30 @@ impl Board {
 
     fn compute_danger(&self, king_sq: u8) -> u64 {
         let mut danger = 0;
-        let (mut pawns, pawn_attack_table, mut knights, mut orth_pieces, mut diag_pieces, enemy_king) = match self.side_to_move {
-            Color::White => (self.pieces[Piece::BP as usize], Self::BLACK_PAWN_ATTACKS, self.pieces[Piece::BN as usize], self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize], self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize], self.pieces[Piece::BK as usize]),
-            Color::Black => (self.pieces[Piece::WP as usize], Self::WHITE_PAWN_ATTACKS, self.pieces[Piece::WN as usize], self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize], self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize], self.pieces[Piece::WK as usize])
+        let (
+            mut pawns,
+            pawn_attack_table,
+            mut knights,
+            mut orth_pieces,
+            mut diag_pieces,
+            enemy_king,
+        ) = match self.side_to_move {
+            Color::White => (
+                self.pieces[Piece::BP as usize],
+                Self::BLACK_PAWN_ATTACKS,
+                self.pieces[Piece::BN as usize],
+                self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BK as usize],
+            ),
+            Color::Black => (
+                self.pieces[Piece::WP as usize],
+                Self::WHITE_PAWN_ATTACKS,
+                self.pieces[Piece::WN as usize],
+                self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WK as usize],
+            ),
         };
         let kingless_occ = self.occ & !(1u64 << king_sq);
         while pawns != 0 {
@@ -1619,7 +1640,8 @@ impl Board {
             diag_pieces &= diag_pieces - 1;
             let mask = Self::BISHOP_MASKS[sq as usize];
             let blockers = kingless_occ & mask;
-            let idx = (blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[sq as usize]) >> Self::BISHOP_SHIFTS[sq as usize]) as usize;
+            let idx = (blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[sq as usize])
+                >> Self::BISHOP_SHIFTS[sq as usize]) as usize;
             danger |= Self::BISHOP_ATTACKS[sq as usize][idx];
         }
         while orth_pieces != 0 {
@@ -1627,7 +1649,8 @@ impl Board {
             orth_pieces &= orth_pieces - 1;
             let mask = Self::ROOK_MASKS[sq as usize];
             let blockers = kingless_occ & mask;
-            let idx = (blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[sq as usize]) >> Self::ROOK_SHIFTS[sq as usize]) as usize;
+            let idx = (blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[sq as usize])
+                >> Self::ROOK_SHIFTS[sq as usize]) as usize;
             danger |= Self::ROOK_ATTACKS[sq as usize][idx];
         }
         danger |= Self::KING_ATTACKS[enemy_king.trailing_zeros() as usize];
@@ -1676,9 +1699,8 @@ impl Board {
 
     fn get_king_moves(&self, moves: &mut Vec<Move>, king_sq: u8, danger_mask: u64) {
         let us = self.side_to_move;
-
-        // Generate the classical moves
-        let mut attacks = Self::KING_ATTACKS[king_sq as usize] & !self.color_occ[us as usize] & !danger_mask;
+        let mut attacks =
+            Self::KING_ATTACKS[king_sq as usize] & !self.color_occ[us as usize] & !danger_mask;
         while attacks != 0 {
             let to = attacks.trailing_zeros() as u8;
             attacks &= attacks - 1;
@@ -1693,7 +1715,11 @@ impl Board {
             moves.push(Move::new(
                 king_sq,
                 to,
-                if us == Color::White {Piece::WK} else {Piece::BK},
+                if us == Color::White {
+                    Piece::WK
+                } else {
+                    Piece::BK
+                },
                 captured_piece,
                 Piece::None,
                 flag,
@@ -1703,9 +1729,22 @@ impl Board {
 
     fn compute_checkers(&self, king_sq: u8) -> u64 {
         let mut checkers = 0;
-        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = match self.side_to_move {
-            Color::White => (self.pieces[Piece::BP as usize], Self::BLACK_PAWN_ATTACKS, self.pieces[Piece::BN as usize], self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize], self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize]),
-            Color::Black => (self.pieces[Piece::WP as usize], Self::WHITE_PAWN_ATTACKS, self.pieces[Piece::WN as usize], self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize], self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize])
+        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = match self.side_to_move
+        {
+            Color::White => (
+                self.pieces[Piece::BP as usize],
+                Self::BLACK_PAWN_ATTACKS,
+                self.pieces[Piece::BN as usize],
+                self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
+            ),
+            Color::Black => (
+                self.pieces[Piece::WP as usize],
+                Self::WHITE_PAWN_ATTACKS,
+                self.pieces[Piece::WN as usize],
+                self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+            ),
         };
         let pawn_attacks = pawn_attack_table[king_sq as usize];
         checkers |= pawn_attacks & pawns;
@@ -1715,13 +1754,15 @@ impl Board {
 
         let diag_mask = Self::BISHOP_MASKS[king_sq as usize];
         let diag_blockers = diag_mask & self.occ;
-        let diag_idx = (diag_blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[king_sq as usize]) >> Self::BISHOP_SHIFTS[king_sq as usize]) as usize;
+        let diag_idx = (diag_blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[king_sq as usize])
+            >> Self::BISHOP_SHIFTS[king_sq as usize]) as usize;
         let diag_attacks = Self::BISHOP_ATTACKS[king_sq as usize][diag_idx];
         checkers |= diag_attacks & diag_pieces;
 
         let orth_mask = Self::ROOK_MASKS[king_sq as usize];
         let orth_blockers = orth_mask & self.occ;
-        let orth_idx = (orth_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[king_sq as usize]) >> Self::ROOK_SHIFTS[king_sq as usize]) as usize;
+        let orth_idx = (orth_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[king_sq as usize])
+            >> Self::ROOK_SHIFTS[king_sq as usize]) as usize;
         let orth_attacks = Self::ROOK_ATTACKS[king_sq as usize][orth_idx];
         checkers |= orth_attacks & orth_pieces;
 
@@ -1739,7 +1780,7 @@ impl Board {
             Piece::BK
         } as usize]
             .trailing_zeros() as u8;
-            debug_assert!(king_sq <= 64);
+        debug_assert!(king_sq <= 64);
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
