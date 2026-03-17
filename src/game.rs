@@ -60,6 +60,7 @@ struct Zobrist {
 #[derive(Clone)]
 pub struct Board {
     pub pieces: [u64; 12],
+    pub mailbox: [Piece; 64],
     pub color_occ: [u64; 2],
     pub occ: u64,
 
@@ -278,6 +279,73 @@ impl Board {
         pieces[Piece::BQ as usize] = 1 << 59;
         pieces[Piece::BK as usize] = 1 << 60;
 
+        let mailbox = [
+            Piece::WR,
+            Piece::WN,
+            Piece::WB,
+            Piece::WQ,
+            Piece::WK,
+            Piece::WB,
+            Piece::WN,
+            Piece::WR,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BR,
+            Piece::BN,
+            Piece::BB,
+            Piece::BQ,
+            Piece::BK,
+            Piece::BB,
+            Piece::BN,
+            Piece::BR,
+        ];
+
         let color_occ = [
             pieces[Piece::WP as usize]
                 | pieces[Piece::WN as usize]
@@ -307,6 +375,7 @@ impl Board {
 
         let mut board = Board {
             pieces,
+            mailbox,
             color_occ,
             occ,
             side_to_move,
@@ -322,24 +391,8 @@ impl Board {
         board.history.push(board.zobrist);
         board
     }
-    pub fn piece_at(&self, sq: u8) -> Option<Piece> {
-        let mask = 1 << sq;
-
-        Piece::PIECE_LIST
-            .into_iter()
-            .find(|&p| self.pieces[p as usize] & mask != 0)
-    }
-
-    pub fn piece_at_for(&self, sq: u8, color: Color) -> Piece {
-        let mask = 1 << sq;
-        let pieces = match color {
-            Color::White => &Piece::PIECE_LIST[0..6],
-            Color::Black => &Piece::PIECE_LIST[6..12],
-        };
-        *pieces
-            .iter()
-            .find(|&&p| self.pieces[p as usize] & mask != 0)
-            .unwrap_or(&Piece::None)
+    pub fn piece_at(&self, sq: u8) -> Piece {
+        self.mailbox[sq as usize]
     }
 
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
@@ -388,6 +441,7 @@ impl Board {
                 mv.to()
             };
             self.remove_piece(c_p, c_sq);
+            self.mailbox[c_sq as usize] = Piece::None;
             let mask = 1u64 << c_sq;
             opponent_side_mask |= mask;
             hash ^= z.piece_square[c_p as usize][c_sq as usize];
@@ -406,10 +460,14 @@ impl Board {
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(moved_piece, mv.from());
+            self.mailbox[mv.from() as usize] = Piece::None;
             self.add_piece(promotion_piece, mv.to());
+            self.mailbox[mv.to() as usize] = promotion_piece;
             hash ^= z.piece_square[promotion_piece as usize][mv.to() as usize];
         } else {
             self.move_piece(moved_piece, mv.from(), mv.to());
+            self.mailbox[mv.from() as usize] = Piece::None;
+            self.mailbox[mv.to() as usize] = moved_piece;
             hash ^= z.piece_square[moved_piece as usize][mv.to() as usize];
 
             if is_castling {
@@ -422,6 +480,8 @@ impl Board {
                 };
 
                 self.move_piece(rook, rook_from, rook_to);
+                self.mailbox[rook_from as usize] = Piece::None;
+                self.mailbox[rook_to as usize] = rook;
 
                 let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
                 moving_side_mask |= rook_mask;
@@ -562,18 +622,23 @@ impl Board {
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(promotion_piece, mv.to());
+            self.mailbox[mv.to() as usize] = Piece::None;
 
             match self.side_to_move {
                 Color::White => {
                     self.add_piece(Piece::WP, mv.from());
+                    self.mailbox[mv.from() as usize] = Piece::WP;
                 }
                 Color::Black => {
                     self.add_piece(Piece::BP, mv.from());
+                    self.mailbox[mv.from() as usize] = Piece::BP;
                 }
             }
         } else {
             let moved_piece = mv.moved_piece();
             self.move_piece(moved_piece, mv.to(), mv.from());
+            self.mailbox[mv.to() as usize] = Piece::None;
+            self.mailbox[mv.from() as usize] = moved_piece;
 
             if is_castling {
                 let (rook, rook_from, rook_to) = match mv.to() {
@@ -585,6 +650,8 @@ impl Board {
                 };
 
                 self.move_piece(rook, rook_from, rook_to);
+                self.mailbox[rook_from as usize] = Piece::None;
+                self.mailbox[rook_to as usize] = rook;
 
                 let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
                 moving_side_mask |= rook_mask;
@@ -594,7 +661,7 @@ impl Board {
         // In case of capture (and maybe en passant), restore the taken piece
         if is_capture {
             let c_p = mv.captured_piece();
-            let sq = if is_en_passant {
+            let c_sq = if is_en_passant {
                 match self.side_to_move {
                     Color::White => mv.to() - 8,
                     Color::Black => mv.to() + 8,
@@ -602,9 +669,10 @@ impl Board {
             } else {
                 mv.to()
             };
-            let sq_mask = 1u64 << sq;
+            let sq_mask = 1u64 << c_sq;
             opponent_side_mask |= sq_mask;
-            self.add_piece(c_p, sq);
+            self.add_piece(c_p, c_sq);
+            self.mailbox[c_sq as usize] = c_p;
         }
 
         // Recompute occupancy
@@ -710,7 +778,7 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let is_promotion = to > 55;
-                let captured_piece = self.piece_at_for(to, Color::Black);
+                let captured_piece = self.piece_at(to);
                 if is_promotion {
                     moves.push(Move::new(
                         from,
@@ -888,7 +956,7 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let is_promotion = to < 8;
-                let captured_piece = self.piece_at_for(to, Color::White);
+                let captured_piece = self.piece_at(to);
                 if is_promotion {
                     moves.push(Move::new(
                         from,
@@ -1010,7 +1078,7 @@ impl Board {
                 let mut captured_piece = Piece::None;
                 let mut flag = 0;
                 if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
-                    captured_piece = self.piece_at_for(to, self.side_to_move.flip());
+                    captured_piece = self.piece_at(to);
                     flag = CAPTURE_FLAG;
                 };
 
@@ -1429,7 +1497,7 @@ impl Board {
                     0
                 };
                 let captured = if flag != 0 {
-                    self.piece_at_for(to, self.side_to_move.flip())
+                    self.piece_at(to)
                 } else {
                     Piece::None
                 };
@@ -1462,7 +1530,7 @@ impl Board {
                     0
                 };
                 let captured = if flag != 0 {
-                    self.piece_at_for(to, self.side_to_move.flip())
+                    self.piece_at(to)
                 } else {
                     Piece::None
                 };
@@ -1513,7 +1581,7 @@ impl Board {
                     0
                 };
                 let captured = if flag != 0 {
-                    self.piece_at_for(to, self.side_to_move.flip())
+                    self.piece_at(to)
                 } else {
                     Piece::None
                 };
@@ -1583,7 +1651,7 @@ impl Board {
             let mut captured_piece = Piece::None;
             let mut flag = 0;
             if self.color_occ[us.flip() as usize] & (1u64 << to) != 0 {
-                captured_piece = self.piece_at_for(to, self.side_to_move.flip());
+                captured_piece = self.piece_at(to);
                 flag = CAPTURE_FLAG;
             };
 
