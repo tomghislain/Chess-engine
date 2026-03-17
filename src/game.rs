@@ -1759,7 +1759,7 @@ impl Board {
         let (block_mask, capture_mask) = if in_check {
             (self.compute_block_mask(king_sq, checkers), checkers)
         } else {
-            self.gen_castling_moves(&mut moves, king_danger); // Castling moves can only happen when not in check
+            self.gen_castling_moves(&mut moves, king_danger_mask); // Castling moves can only happen when not in check
             (!0u64, !0u64) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
