@@ -1715,178 +1715,40 @@ impl Board {
         }
     }
 
-    pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
+    pub fn get_legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(218);
 
-        // Single self.side_to_move match
-        match self.side_to_move {
-            Color::White => {
-                self.get_white_pawn_moves(&mut moves);
-                self.get_knight_moves(&mut moves, Piece::WN);
-                self.get_bishop_moves(&mut moves, Piece::WB);
-                self.get_rook_moves(&mut moves, Piece::WR);
-                self.get_queen_moves(&mut moves, Piece::WQ);
-                self.get_king_moves(&mut moves, Piece::WK);
-            }
-            Color::Black => {
-                self.get_black_pawn_moves(&mut moves);
-                self.get_knight_moves(&mut moves, Piece::BN);
-                self.get_bishop_moves(&mut moves, Piece::BB);
-                self.get_rook_moves(&mut moves, Piece::BR);
-                self.get_queen_moves(&mut moves, Piece::BQ);
-                self.get_king_moves(&mut moves, Piece::BK);
-            }
-        }
-
-        moves
-    }
-
-    fn would_be_in_check(&self, mv: Move) -> bool {
-        debug_assert!(mv.flags() & CASTLING_FLAG == 0);
-        let flags = mv.flags();
-        let is_capture = flags & CAPTURE_FLAG != 0;
-        let is_en_passant = flags & EN_PASSANT_FLAG != 0;
         let us = self.side_to_move;
-        let enemy = us.flip();
-        let from = mv.from();
-        let to = mv.to();
 
-        let (
-            mut enemy_pawns,
-            mut enemy_knights,
-            mut enemy_bishops,
-            mut enemy_rooks,
-            mut enemy_queens,
-            enemy_king,
-        ) = match enemy {
-            Color::White => (
-                self.pieces[Piece::WP as usize],
-                self.pieces[Piece::WN as usize],
-                self.pieces[Piece::WB as usize],
-                self.pieces[Piece::WR as usize],
-                self.pieces[Piece::WQ as usize],
-                self.pieces[Piece::WK as usize],
-            ),
-            Color::Black => (
-                self.pieces[Piece::BP as usize],
-                self.pieces[Piece::BN as usize],
-                self.pieces[Piece::BB as usize],
-                self.pieces[Piece::BR as usize],
-                self.pieces[Piece::BQ as usize],
-                self.pieces[Piece::BK as usize],
-            ),
-        };
-        // Update occupancy
-        let mut new_occ = self.occ;
-        new_occ ^= 1 << from;
-        if is_capture {
-            let c_sq = if is_en_passant {
-                if us == Color::White { to - 8 } else { to + 8 }
-            } else {
-                to
-            };
-            match mv.captured_piece() {
-                Piece::WP | Piece::BP => enemy_pawns ^= 1 << c_sq,
-                Piece::WN | Piece::BN => enemy_knights ^= 1 << c_sq,
-                Piece::WB | Piece::BB => enemy_bishops ^= 1 << c_sq,
-                Piece::WR | Piece::BR => enemy_rooks ^= 1 << c_sq,
-                Piece::WQ | Piece::BQ => enemy_queens ^= 1 << c_sq,
-                _ => (),
-            }
-            new_occ ^= 1 << c_sq;
-        }
-        new_occ ^= 1 << to;
-        let king_sq = if matches!(mv.moved_piece(), Piece::WK | Piece::BK) {
-            to
+        let king_sq = self.pieces[if us == Color::White {
+            Piece::WK
         } else {
-            let king_piece = if us == Color::White {
-                Piece::WK
-            } else {
-                Piece::BK
-            };
-            self.pieces[king_piece as usize].trailing_zeros() as u8
-        };
+            Piece::BK
+        } as usize]
+            .trailing_zeros();
 
-        // Pawn attacks
-        match enemy {
-            Color::White => {
-                if (Self::BLACK_PAWN_ATTACKS[king_sq as usize] & enemy_pawns) != 0 {
-                    return true;
-                }
-            }
-            Color::Black => {
-                if (Self::WHITE_PAWN_ATTACKS[king_sq as usize] & enemy_pawns) != 0 {
-                    return true;
-                }
-            }
+        let king_danger = self.compute_danger();
+
+        self.get_king_moves(&mut moves, king_sq, king_danger);
+        let checkers: u64 = self.compute_checkers();
+
+        if checkers.count_ones() > 1 {
+            return moves;
         }
 
-        // Knight attacks
-        if (Self::KNIGHT_ATTACKS[king_sq as usize] & enemy_knights) != 0 {
-            return true;
-        }
+        let (pinned, pin_rays) = self.compute_pins();
 
-        // Bishop/Queen attacks
-        let bishop_mask = Self::BISHOP_MASKS[king_sq as usize];
-        let bishop_blockers = new_occ & bishop_mask;
-        let bishop_idx = (bishop_blockers
-            .wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[king_sq as usize])
-            >> Self::BISHOP_SHIFTS[king_sq as usize]) as usize;
-        let bishop_attacks = Self::BISHOP_ATTACKS[king_sq as usize][bishop_idx];
-        if (bishop_attacks & (enemy_bishops | enemy_queens)) != 0 {
-            return true;
-        }
-
-        // Rook/Queen attacks
-        let rook_mask = Self::ROOK_MASKS[king_sq as usize];
-        let rook_blockers = new_occ & rook_mask;
-        let rook_idx = (rook_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[king_sq as usize])
-            >> Self::ROOK_SHIFTS[king_sq as usize]) as usize;
-        let rook_attacks = Self::ROOK_ATTACKS[king_sq as usize][rook_idx];
-        if (rook_attacks & (enemy_rooks | enemy_queens)) != 0 {
-            return true;
-        }
-
-        // King attacks
-        if (Self::KING_ATTACKS[king_sq as usize] & enemy_king) != 0 {
-            return true;
-        }
-
-        false
-    }
-
-    fn would_castle_be_in_check(&self, mv: Move) -> bool {
-        debug_assert!(mv.flags() & CASTLING_FLAG != 0);
-        let us = self.side_to_move;
-        let (king_piece, king_sq) = if us == Color::White {
-            (Piece::WK, 4)
+        let in_check = checkers != 0;
+        let (block_mask, capture_mask) = if in_check {
+            self.compute_evasion_masks(king_sq, checkers)
         } else {
-            (Piece::BK, 60)
+            self.gen_castling_moves(&mut moves, king_danger);
+            (!0u64, !0u64) // All squares
         };
 
-        let squares_to_check = match mv.to() {
-            6 => [4, 5, 6],
-            2 => [4, 3, 2],
-            62 => [60, 61, 62],
-            58 => [60, 59, 58],
-            _ => unreachable!(),
-        };
+        self.gen_non_king_moves(&mut moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep
 
-        for &sq in &squares_to_check {
-            let fake_move = Move::new(king_sq, sq, king_piece, Piece::None, Piece::None, 0);
-            if self.would_be_in_check(fake_move) {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn is_move_legal(&self, mv: Move) -> bool {
-        if mv.flags() & CASTLING_FLAG != 0 {
-            !self.would_castle_be_in_check(mv)
-        } else {
-            !self.would_be_in_check(mv)
-        }
+        moves // Shrink vec ?
     }
 
     fn is_50_move_draw(&self) -> bool {
@@ -1959,49 +1821,19 @@ impl Board {
         self.is_50_move_draw() || self.is_threefold_repetition() || self.is_insufficient_material()
     }
 
-    pub fn is_king_checked(&self) -> bool {
-        let (king_piece, king_sq) = if self.side_to_move == Color::White {
-            (
-                Piece::WK,
-                self.pieces[Piece::WK as usize].trailing_zeros() as u8,
-            )
-        } else {
-            (
-                Piece::BK,
-                self.pieces[Piece::BK as usize].trailing_zeros() as u8,
-            )
-        };
-        let fake_move = Move::new(king_sq, king_sq, king_piece, Piece::None, Piece::None, 0);
-        self.would_be_in_check(fake_move)
-    }
-
-    pub fn get_legal_moves(&self) -> Vec<Move> {
-        let pseudo_legal_moves = self.get_pseudo_legal_moves();
-        let mut legal_moves = Vec::with_capacity(pseudo_legal_moves.len());
-        for mv in pseudo_legal_moves {
-            if self.is_move_legal(mv) {
-                legal_moves.push(mv);
-            }
-        }
-
-        legal_moves
-    }
-
     pub fn perft(&mut self, depth: u8) -> u64 {
         if depth == 0 {
             return 1;
         }
 
         let mut nodes = 0;
-        let moves = self.get_pseudo_legal_moves();
+        let moves = self.get_legal_moves();
 
         for mv in moves {
             // println!("Making move at depth {}: {:?}", depth, m);
-            if self.is_move_legal(mv) {
-                self.make_move(mv);
-                nodes += self.perft(depth - 1);
-                self.unmake_move(mv);
-            }
+            self.make_move(mv);
+            nodes += self.perft(depth - 1);
+            self.unmake_move(mv);
             // println!("Unmaking move at depth {}: {:?}", depth, m);
         }
         nodes
