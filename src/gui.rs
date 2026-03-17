@@ -49,7 +49,7 @@ pub fn display_board(
     );
     for sq in 0..64 {
         let index = ((sq ^ (sq >> 3)) & 1) as usize;
-        let sq_colors = [LIGHT_SQUARE_COLOR, DARK_SQUARE_COLOR];
+        let sq_colors = [DARK_SQUARE_COLOR, LIGHT_SQUARE_COLOR];
         let mut sq_color = sq_colors[index];
         if let Some((previous_from, previous_to)) = previous_move_squares
             && (sq == previous_from || sq == previous_to)
@@ -134,10 +134,11 @@ pub fn get_player_move(
     let mut from: Option<u8> = None;
     let mut moves_from = moves.clone();
     loop {
+        let read_event = event::read();
         if let Ok(event::Event::Mouse(event::MouseEvent {
             kind, column, row, ..
-        })) = event::read()
-            && kind == event::MouseEventKind::Down(event::MouseButton::Left)
+        })) = read_event
+            && let event::MouseEventKind::Down(_) = kind
         {
             let clicked = coords_to_sq(column, row);
             if let Some(clicked_sq) = clicked {
@@ -182,12 +183,19 @@ pub fn get_player_move(
                         .collect();
                 }
             }
-            let possible_to_squares = if moves_from != moves {
+            let possible_to_squares = if from.is_some() {
                 moves_from.iter().map(|m| m.to()).collect()
             } else {
                 Vec::new()
             };
             display_board(board, previous_move_squares, from, possible_to_squares);
+        } else if let Ok(event::Event::Key(event::KeyEvent {
+            code, modifiers, ..
+        })) = read_event
+            && code == event::KeyCode::Char('c')
+            && modifiers == event::KeyModifiers::CONTROL
+        {
+            panic!("UserInterrupt");
         }
     }
 }
@@ -214,10 +222,11 @@ fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
     let _ = stdout.flush();
 
     loop {
+        let read_event = event::read();
         if let Ok(event::Event::Mouse(event::MouseEvent {
             kind, column, row, ..
-        })) = event::read()
-            && kind == event::MouseEventKind::Down(event::MouseButton::Left)
+        })) = read_event
+            && let event::MouseEventKind::Down(_) = kind
         {
             // Check if click is inside this square
             if column >= sq_col
@@ -256,6 +265,13 @@ fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
                     _ => {}
                 }
             }
+        } else if let Ok(event::Event::Key(event::KeyEvent {
+            code, modifiers, ..
+        })) = read_event
+            && code == event::KeyCode::Char('c')
+            && modifiers == event::KeyModifiers::CONTROL
+        {
+            panic!("UserInterrupt");
         }
     }
 }
