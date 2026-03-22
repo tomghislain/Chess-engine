@@ -91,7 +91,7 @@ fn negamax(
 }
 
 pub fn search_root(board: &mut game::Board, depth: u8) -> Option<game::Move> {
-    if board.is_draw() || board.get_pseudo_legal_moves().is_empty() {
+    if board.is_draw() || board.get_legal_moves().is_empty() {
         return None;
     }
     let mut tt = TranspositionTable::new();

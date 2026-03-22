@@ -152,7 +152,7 @@ impl Tree {
 }
 
 pub fn mcts_search(board: &mut game::Board, iteration_number: usize) -> Option<game::Move> {
-    if board.is_draw() || board.get_pseudo_legal_moves().is_empty() {
+    if board.is_draw() || board.get_legal_moves().is_empty() {
         return None;
     }
 
