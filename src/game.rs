@@ -525,48 +525,52 @@ impl Board {
             hash ^= z.castling[3];
         }
 
-        match moved_piece {
-            Piece::WK => self.castling &= !(WK_CASTLE | WQ_CASTLE),
-            Piece::BK => self.castling &= !(BK_CASTLE | BQ_CASTLE),
+        self.castling &= match moved_piece {
+            Piece::WK => !(WK_CASTLE | WQ_CASTLE),
+            Piece::BK => !(BK_CASTLE | BQ_CASTLE),
             Piece::WR => {
                 if mv.from() == 7 {
-                    self.castling &= !WK_CASTLE
-                };
-                if mv.from() == 0 {
-                    self.castling &= !WQ_CASTLE
-                };
+                    !WK_CASTLE
+                } else if mv.from() == 0 {
+                    !WQ_CASTLE
+                } else {
+                    !0
+                }
             }
             Piece::BR => {
                 if mv.from() == 63 {
-                    self.castling &= !BK_CASTLE
-                };
-                if mv.from() == 56 {
-                    self.castling &= !BQ_CASTLE
-                };
+                    !BK_CASTLE
+                } else if mv.from() == 56 {
+                    !BQ_CASTLE
+                } else {
+                    !0
+                }
             }
-            _ => (),
-        }
+            _ => !0,
+        };
 
         if is_capture {
-            match mv.captured_piece() {
+            self.castling &= match mv.captured_piece() {
                 Piece::WR => {
                     if mv.to() == 7 {
-                        self.castling &= !WK_CASTLE
-                    }
-                    if mv.to() == 0 {
-                        self.castling &= !WQ_CASTLE
+                        !WK_CASTLE
+                    } else if mv.to() == 0 {
+                        !WQ_CASTLE
+                    } else {
+                        !0
                     }
                 }
                 Piece::BR => {
                     if mv.to() == 63 {
-                        self.castling &= !BK_CASTLE
-                    }
-                    if mv.to() == 56 {
-                        self.castling &= !BQ_CASTLE
+                        !BK_CASTLE
+                    } else if mv.to() == 56 {
+                        !BQ_CASTLE
+                    } else {
+                        !0
                     }
                 }
-                _ => (),
-            }
+                _ => !0,
+            };
         }
 
         if self.castling & WK_CASTLE != 0 {
