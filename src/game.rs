@@ -60,18 +60,17 @@ struct Zobrist {
 #[derive(Clone)]
 pub struct Board {
     pub pieces: [u64; 12],
-    pub mailbox: [Piece; 64],
     pub color_occ: [u64; 2],
+    pub mailbox: [Piece; 64],
     pub occ: u64,
 
     pub side_to_move: Color,
     pub castling: u8,
     pub en_passant: u8,
     pub halfmove_clock: u8,
-
     pub zobrist: u64,
+    
     pub history: Vec<u64>,
-
     pub undo_stack: Vec<Undo>,
 }
 
@@ -161,12 +160,12 @@ impl Move {
 
     pub fn captured_piece(self) -> Piece {
         let index = ((self.0 >> 16) & 0b1111) as usize;
-        Piece::PIECE_LIST.get(index).copied().unwrap_or(Piece::None)
+        if index == 12 {Piece::None} else {Piece::PIECE_LIST[index]}
     }
 
     pub fn promotion(self) -> Piece {
         let index = ((self.0 >> 20) & 0b1111) as usize;
-        Piece::PIECE_LIST.get(index).copied().unwrap_or(Piece::None)
+        if index == 12 {Piece::None} else {Piece::PIECE_LIST[index]}
     }
 
     pub fn flags(self) -> u8 {
