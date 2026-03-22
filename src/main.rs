@@ -73,21 +73,14 @@ fn run_game(
     show_gui: bool,
 ) -> Result<Option<game::Color>, Box<dyn std::error::Error>> {
     let mut board = game::Board::new();
-    let mut last_move = game::Move::new(
-        0,
-        0,
-        game::Piece::WK,
-        game::Piece::None,
-        game::Piece::None,
-        0,
-    );
+    let mut last_move_squares = None;
 
     loop {
         if show_gui {
             crossterm::terminal::enable_raw_mode()?;
             gui::display_board(
                 &board,
-                Some((last_move.from(), last_move.to())),
+                last_move_squares,
                 None,
                 Vec::new(),
             );
@@ -103,7 +96,7 @@ fn run_game(
                 if !show_gui {
                     return Err("Input not supported in batch mode.".into());
                 }
-                gui::get_player_move(&mut board, Some((last_move.from(), last_move.to())))
+                gui::get_player_move(&mut board, last_move_squares)
             }
             PlayerType::RandomMove => mcts::get_random_move(&mut board),
             PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
@@ -116,7 +109,7 @@ fn run_game(
             }
 
             board.make_move(mv);
-            last_move = mv;
+            last_move_squares = Some((mv.from(), mv.to()));
         } else {
             let result = if board.get_legal_moves().is_empty() {
                 board.is_king_checked()
