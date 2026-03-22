@@ -699,7 +699,14 @@ impl Board {
 
     const WHITE_PAWN_ATTACKS: [u64; 64] = Self::gen_white_pawn_attacks();
 
-    fn get_white_pawn_moves(&self, moves: &mut Vec<Move>, block_mask: u64, capture_mask: u64, pinned: u64, pin_rays: &[u64; 64]) {
+    fn get_white_pawn_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        block_mask: u64,
+        capture_mask: u64,
+        pinned: u64,
+        pin_rays: &[u64; 64],
+    ) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
 
@@ -710,41 +717,49 @@ impl Board {
             single_push &= single_push - 1;
             let from = to - 8;
             let is_promotion = to > 55;
-            if is_promotion {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::None,
-                    Piece::WN,
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::None,
-                    Piece::WB,
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::None,
-                    Piece::WR,
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::None,
-                    Piece::WQ,
-                    PROMOTION_FLAG,
-                ));
+            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_legal = if is_pinned {
+                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
             } else {
-                moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::None, 0));
+                (block_mask >> to) & 1 != 0
+            };
+            if is_legal {
+                if is_promotion {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        Piece::None,
+                        Piece::WN,
+                        PROMOTION_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        Piece::None,
+                        Piece::WB,
+                        PROMOTION_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        Piece::None,
+                        Piece::WR,
+                        PROMOTION_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        Piece::None,
+                        Piece::WQ,
+                        PROMOTION_FLAG,
+                    ));
+                } else {
+                    moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::None, 0));
+                }
             }
         }
 
@@ -755,14 +770,22 @@ impl Board {
             let to = double_push.trailing_zeros() as u8;
             double_push &= double_push - 1;
             let from = to - 16;
-            moves.push(Move::new(
-                from,
-                to,
-                Piece::WP,
-                Piece::None,
-                Piece::None,
-                DOUBLE_PAWN_PUSH_FLAG,
-            ));
+            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_legal = if is_pinned {
+                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
+            } else {
+                (block_mask >> to) & 1 != 0
+            };
+            if is_legal {
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WP,
+                    Piece::None,
+                    Piece::None,
+                    DOUBLE_PAWN_PUSH_FLAG,
+                ))
+            };
         }
 
         // Captures
@@ -779,48 +802,56 @@ impl Board {
 
                 let is_promotion = to > 55;
                 let captured_piece = self.piece_at(to);
-                if is_promotion {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Piece::WN,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Piece::WB,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Piece::WR,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Piece::WQ,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
+                let is_pinned = (pinned >> from) & 1 != 0;
+                let is_legal = if is_pinned {
+                    (1u64 << to) & pin_rays[from as usize] & capture_mask != 0
                 } else {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        captured_piece,
-                        Piece::None,
-                        CAPTURE_FLAG,
-                    ));
+                    (capture_mask >> to) & 1 != 0
+                };
+                if is_legal {
+                    if is_promotion {
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::WP,
+                            captured_piece,
+                            Piece::WN,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::WP,
+                            captured_piece,
+                            Piece::WB,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::WP,
+                            captured_piece,
+                            Piece::WR,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::WP,
+                            captured_piece,
+                            Piece::WQ,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                    } else {
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::WP,
+                            captured_piece,
+                            Piece::None,
+                            CAPTURE_FLAG,
+                        ));
+                    }
                 }
             }
         }
@@ -833,28 +864,54 @@ impl Board {
                 let to = left_en_passant.trailing_zeros() as u8;
                 left_en_passant &= left_en_passant - 1;
                 let from = to - 7;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::BP,
-                    Piece::None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
-                ));
+                let captured_sq = to - 8;
+                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq;
+                changed_pieces[Piece::WP as usize] ^= (1u64 << to) | (1u64 << from);
+                let checkers = self.compute_checkers(
+                    self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+                    changed_occ,
+                    Color::Black,
+                    &changed_pieces,
+                );
+                if checkers == 0 {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        Piece::BP,
+                        Piece::None,
+                        CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    ));
+                }
             }
             let mut right_en_passant = ((pawns << 9) & !FILE_A) & en_passant_mask;
             while right_en_passant != 0 {
                 let to = right_en_passant.trailing_zeros() as u8;
                 right_en_passant &= right_en_passant - 1;
                 let from = to - 9;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::BP,
-                    Piece::None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
-                ));
+                let captured_sq = to - 8;
+                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq;
+                changed_pieces[Piece::WP as usize] ^= (1u64 << to) | (1u64 << from);
+                let checkers = self.compute_checkers(
+                    self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+                    changed_occ,
+                    Color::Black,
+                    &changed_pieces,
+                );
+                if checkers == 0 {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WP,
+                        Piece::BP,
+                        Piece::None,
+                        CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    ));
+                }
             }
         }
     }
@@ -877,7 +934,14 @@ impl Board {
 
     const BLACK_PAWN_ATTACKS: [u64; 64] = Self::gen_black_pawn_attacks();
 
-    fn get_black_pawn_moves(&self, moves: &mut Vec<Move>, block_mask: u64, capture_mask: u64, pinned: u64, pin_rays: &[u64; 64]) {
+    fn get_black_pawn_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        block_mask: u64,
+        capture_mask: u64,
+        pinned: u64,
+        pin_rays: &[u64; 64],
+    ) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
 
@@ -888,41 +952,49 @@ impl Board {
             single_push &= single_push - 1;
             let from = to + 8;
             let is_promotion = to < 8;
-            if is_promotion {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::None,
-                    Piece::BN,
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::None,
-                    Piece::BB,
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::None,
-                    Piece::BR,
-                    PROMOTION_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::None,
-                    Piece::BQ,
-                    PROMOTION_FLAG,
-                ));
+            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_legal = if is_pinned {
+                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
             } else {
-                moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::None, 0));
+                (block_mask >> to) & 1 != 0
+            };
+            if is_legal {
+                if is_promotion {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        Piece::None,
+                        Piece::BN,
+                        PROMOTION_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        Piece::None,
+                        Piece::BB,
+                        PROMOTION_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        Piece::None,
+                        Piece::BR,
+                        PROMOTION_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        Piece::None,
+                        Piece::BQ,
+                        PROMOTION_FLAG,
+                    ));
+                } else {
+                    moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::None, 0));
+                }
             }
         }
 
@@ -933,14 +1005,22 @@ impl Board {
             let to = double_push.trailing_zeros() as u8;
             double_push &= double_push - 1;
             let from = to + 16;
-            moves.push(Move::new(
-                from,
-                to,
-                Piece::BP,
-                Piece::None,
-                Piece::None,
-                DOUBLE_PAWN_PUSH_FLAG,
-            ));
+            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_legal = if is_pinned {
+                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
+            } else {
+                (block_mask >> to) & 1 != 0
+            };
+            if is_legal {
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BP,
+                    Piece::None,
+                    Piece::None,
+                    DOUBLE_PAWN_PUSH_FLAG,
+                ));
+            }
         }
 
         // Captures
@@ -957,48 +1037,56 @@ impl Board {
 
                 let is_promotion = to < 8;
                 let captured_piece = self.piece_at(to);
-                if is_promotion {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Piece::BN,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Piece::BB,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Piece::BR,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Piece::BQ,
-                        CAPTURE_FLAG | PROMOTION_FLAG,
-                    ));
+                let is_pinned = (pinned >> from) & 1 != 0;
+                let is_legal = if is_pinned {
+                    (1u64 << to) & pin_rays[from as usize] & capture_mask != 0
                 } else {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        captured_piece,
-                        Piece::None,
-                        CAPTURE_FLAG,
-                    ));
+                    (capture_mask >> to) & 1 != 0
+                };
+                if is_legal {
+                    if is_promotion {
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::BP,
+                            captured_piece,
+                            Piece::BN,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::BP,
+                            captured_piece,
+                            Piece::BB,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::BP,
+                            captured_piece,
+                            Piece::BR,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::BP,
+                            captured_piece,
+                            Piece::BQ,
+                            CAPTURE_FLAG | PROMOTION_FLAG,
+                        ));
+                    } else {
+                        moves.push(Move::new(
+                            from,
+                            to,
+                            Piece::BP,
+                            captured_piece,
+                            Piece::None,
+                            CAPTURE_FLAG,
+                        ));
+                    }
                 }
             }
         }
@@ -1011,28 +1099,54 @@ impl Board {
                 let to = left_en_passant.trailing_zeros() as u8;
                 left_en_passant &= left_en_passant - 1;
                 let from = to + 7;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::WP,
-                    Piece::None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
-                ));
+                let captured_sq = to + 8;
+                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq;
+                changed_pieces[Piece::BP as usize] ^= (1u64 << to) | (1u64 << from);
+                let checkers = self.compute_checkers(
+                    self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+                    changed_occ,
+                    Color::White,
+                    &changed_pieces,
+                );
+                if checkers == 0 {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        Piece::WP,
+                        Piece::None,
+                        CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    ));
+                }
             }
             let mut right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
             while right_en_passant != 0 {
                 let to = right_en_passant.trailing_zeros() as u8;
                 right_en_passant &= right_en_passant - 1;
                 let from = to + 9;
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::WP,
-                    Piece::None,
-                    CAPTURE_FLAG | EN_PASSANT_FLAG,
-                ));
+                let captured_sq = to + 8;
+                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq;
+                changed_pieces[Piece::BP as usize] ^= (1u64 << to) | (1u64 << from);
+                let checkers = self.compute_checkers(
+                    self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+                    changed_occ,
+                    Color::White,
+                    &changed_pieces,
+                );
+                if checkers == 0 {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BP,
+                        Piece::WP,
+                        Piece::None,
+                        CAPTURE_FLAG | EN_PASSANT_FLAG,
+                    ));
+                }
             }
         }
     }
@@ -1062,14 +1176,23 @@ impl Board {
 
     const KNIGHT_ATTACKS: [u64; 64] = Self::gen_knight_attacks();
 
-    fn get_knight_moves(&self, moves: &mut Vec<Move>, knight_piece: Piece, block_mask: u64, capture_mask: u64, pinned: u64, pin_rays: &[u64; 64]) {
+    fn get_knight_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        knight_piece: Piece,
+        block_mask: u64,
+        capture_mask: u64,
+        pinned: u64,
+    ) {
         let us = self.side_to_move;
-        let mut knights = self.pieces[knight_piece as usize];
+        let mut knights = self.pieces[knight_piece as usize] & !pinned;
         while knights != 0 {
             let from = knights.trailing_zeros() as u8;
             knights &= knights - 1;
 
-            let mut attacks = Self::KNIGHT_ATTACKS[from as usize] & !self.color_occ[us as usize];
+            let mut attacks = Self::KNIGHT_ATTACKS[from as usize]
+                & !self.color_occ[us as usize]
+                & (block_mask | capture_mask);
 
             while attacks != 0 {
                 let to = attacks.trailing_zeros() as u8;
@@ -1473,18 +1596,33 @@ impl Board {
     const ROOK_ATTACKS: [[u64; 4096]; 64] = Self::gen_rook_attacks();
     const BISHOP_ATTACKS: [[u64; 512]; 64] = Self::gen_bishop_attacks();
 
-    fn get_rook_moves(&self, moves: &mut Vec<Move>, rook_piece: Piece, block_mask: u64, capture_mask: u64, pinned: u64, pin_rays: &[u64; 64]) {
+    fn get_rook_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        rook_piece: Piece,
+        block_mask: u64,
+        capture_mask: u64,
+        pinned: u64,
+        pin_rays: &[u64; 64],
+    ) {
         let us = self.side_to_move;
         let mut rooks = self.pieces[rook_piece as usize];
         while rooks != 0 {
             let from = rooks.trailing_zeros() as u8;
             rooks &= rooks - 1;
 
+            let is_pinned = (pinned >> from) & 1 != 0;
+
             let mask = Self::ROOK_MASKS[from as usize];
             let blockers = self.occ & mask;
             let idx = (blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[from as usize])
                 >> Self::ROOK_SHIFTS[from as usize]) as usize;
-            let attacks = Self::ROOK_ATTACKS[from as usize][idx] & !self.color_occ[us as usize];
+            let legal_mask = if is_pinned {
+                !self.color_occ[us as usize] & (block_mask | capture_mask) & pin_rays[from as usize]
+            } else {
+                !self.color_occ[us as usize] & (block_mask | capture_mask)
+            };
+            let attacks = Self::ROOK_ATTACKS[from as usize][idx] & legal_mask;
 
             let mut remaining = attacks;
             while remaining != 0 {
@@ -1506,18 +1644,33 @@ impl Board {
         }
     }
 
-    fn get_bishop_moves(&self, moves: &mut Vec<Move>, bishop_piece: Piece, block_mask: u64, capture_mask: u64, pinned: u64, pin_rays: &[u64; 64]) {
+    fn get_bishop_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        bishop_piece: Piece,
+        block_mask: u64,
+        capture_mask: u64,
+        pinned: u64,
+        pin_rays: &[u64; 64],
+    ) {
         let us = self.side_to_move;
         let mut bishops = self.pieces[bishop_piece as usize];
         while bishops != 0 {
             let from = bishops.trailing_zeros() as u8;
             bishops &= bishops - 1;
 
+            let is_pinned = (pinned >> from) & 1 != 0;
+
             let mask = Self::BISHOP_MASKS[from as usize];
             let blockers = self.occ & mask;
             let idx = (blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[from as usize])
                 >> Self::BISHOP_SHIFTS[from as usize]) as usize;
-            let attacks = Self::BISHOP_ATTACKS[from as usize][idx] & !self.color_occ[us as usize];
+            let legal_mask = if is_pinned {
+                !self.color_occ[us as usize] & (block_mask | capture_mask) & pin_rays[from as usize]
+            } else {
+                !self.color_occ[us as usize] & (block_mask | capture_mask)
+            };
+            let attacks = Self::BISHOP_ATTACKS[from as usize][idx] & legal_mask;
 
             let mut remaining = attacks;
             while remaining != 0 {
@@ -1546,29 +1699,42 @@ impl Board {
         }
     }
 
-    fn get_queen_moves(&self, moves: &mut Vec<Move>, queen_piece: Piece, block_mask: u64, capture_mask: u64, pinned: u64, pin_rays: &[u64; 64]) {
+    fn get_queen_moves(
+        &self,
+        moves: &mut Vec<Move>,
+        queen_piece: Piece,
+        block_mask: u64,
+        capture_mask: u64,
+        pinned: u64,
+        pin_rays: &[u64; 64],
+    ) {
         let us = self.side_to_move;
         let mut queens = self.pieces[queen_piece as usize];
         while queens != 0 {
             let from = queens.trailing_zeros() as u8;
             queens &= queens - 1;
 
-            // Rook part
-            let rook_mask = Self::ROOK_MASKS[from as usize];
-            let rook_blockers = self.occ & rook_mask;
-            let rook_idx = (rook_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[from as usize])
+            let is_pinned = (pinned >> from) & 1 != 0;
+
+            let orth_mask = Self::ROOK_MASKS[from as usize];
+            let orth_blockers = self.occ & orth_mask;
+            let orth_idx = (orth_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[from as usize])
                 >> Self::ROOK_SHIFTS[from as usize]) as usize;
-            let rook_attacks = Self::ROOK_ATTACKS[from as usize][rook_idx];
+            let orth_attacks = Self::ROOK_ATTACKS[from as usize][orth_idx];
 
-            // Bishop part
-            let bishop_mask = Self::BISHOP_MASKS[from as usize];
-            let bishop_blockers = self.occ & bishop_mask;
-            let bishop_idx = (bishop_blockers
-                .wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[from as usize])
+            let diag_mask = Self::BISHOP_MASKS[from as usize];
+            let diag_blockers = self.occ & diag_mask;
+            let diag_idx = (diag_blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[from as usize])
                 >> Self::BISHOP_SHIFTS[from as usize]) as usize;
-            let bishop_attacks = Self::BISHOP_ATTACKS[from as usize][bishop_idx];
+            let diag_attacks = Self::BISHOP_ATTACKS[from as usize][diag_idx];
 
-            let attacks = (rook_attacks | bishop_attacks) & !self.color_occ[us as usize];
+            let legal_mask = if is_pinned {
+                !self.color_occ[us as usize] & (block_mask | capture_mask) & pin_rays[from as usize]
+            } else {
+                !self.color_occ[us as usize] & (block_mask | capture_mask)
+            };
+
+            let attacks = (orth_attacks | diag_attacks) & legal_mask;
 
             let mut remaining = attacks;
             while remaining != 0 {
@@ -1727,23 +1893,28 @@ impl Board {
         }
     }
 
-    fn compute_checkers(&self, king_sq: u8) -> u64 {
+    fn compute_checkers(
+        &self,
+        king_sq: u8,
+        occ: u64,
+        attacker_color: Color,
+        pieces: &[u64; 12],
+    ) -> u64 {
         let mut checkers = 0;
-        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = match self.side_to_move
-        {
-            Color::White => (
-                self.pieces[Piece::BP as usize],
-                Self::BLACK_PAWN_ATTACKS,
-                self.pieces[Piece::BN as usize],
-                self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
-                self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
-            ),
+        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = match attacker_color {
             Color::Black => (
-                self.pieces[Piece::WP as usize],
+                pieces[Piece::BP as usize],
                 Self::WHITE_PAWN_ATTACKS,
-                self.pieces[Piece::WN as usize],
-                self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
-                self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+                pieces[Piece::BN as usize],
+                pieces[Piece::BR as usize] | pieces[Piece::BQ as usize],
+                pieces[Piece::BB as usize] | pieces[Piece::BQ as usize],
+            ),
+            Color::White => (
+                pieces[Piece::WP as usize],
+                Self::BLACK_PAWN_ATTACKS,
+                pieces[Piece::WN as usize],
+                pieces[Piece::WR as usize] | pieces[Piece::WQ as usize],
+                pieces[Piece::WB as usize] | pieces[Piece::WQ as usize],
             ),
         };
         let pawn_attacks = pawn_attack_table[king_sq as usize];
@@ -1753,14 +1924,14 @@ impl Board {
         checkers |= knight_attacks & knights;
 
         let diag_mask = Self::BISHOP_MASKS[king_sq as usize];
-        let diag_blockers = diag_mask & self.occ;
+        let diag_blockers = diag_mask & occ;
         let diag_idx = (diag_blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[king_sq as usize])
             >> Self::BISHOP_SHIFTS[king_sq as usize]) as usize;
         let diag_attacks = Self::BISHOP_ATTACKS[king_sq as usize][diag_idx];
         checkers |= diag_attacks & diag_pieces;
 
         let orth_mask = Self::ROOK_MASKS[king_sq as usize];
-        let orth_blockers = orth_mask & self.occ;
+        let orth_blockers = orth_mask & occ;
         let orth_idx = (orth_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[king_sq as usize])
             >> Self::ROOK_SHIFTS[king_sq as usize]) as usize;
         let orth_attacks = Self::ROOK_ATTACKS[king_sq as usize][orth_idx];
@@ -1853,21 +2024,10 @@ impl Board {
             ),
         };
 
-        let diag_mask = Self::BISHOP_MASKS[king_sq as usize];
-        let diag_blockers = diag_mask & self.occ;
-        let diag_idx = (diag_blockers.wrapping_mul(Self::BISHOP_MAGIC_NUMBERS[king_sq as usize])
-            >> Self::BISHOP_SHIFTS[king_sq as usize]) as usize;
-        let diag_attacks = Self::BISHOP_ATTACKS[king_sq as usize][diag_idx];
-        let diag_attackers = diag_attacks & diag_pieces;
+        let potential_diag_attackers = Self::BISHOP_ATTACKS[king_sq as usize][0] & diag_pieces;
+        let potential_orth_attackers = Self::ROOK_ATTACKS[king_sq as usize][0] & orth_pieces;
 
-        let orth_mask = Self::ROOK_MASKS[king_sq as usize];
-        let orth_blockers = orth_mask & self.occ;
-        let orth_idx = (orth_blockers.wrapping_mul(Self::ROOK_MAGIC_NUMBERS[king_sq as usize])
-            >> Self::ROOK_SHIFTS[king_sq as usize]) as usize;
-        let orth_attacks = Self::ROOK_ATTACKS[king_sq as usize][orth_idx];
-        let orth_attackers = orth_attacks & orth_pieces;
-
-        let mut attackers = diag_attackers | orth_attackers;
+        let mut attackers = potential_diag_attackers | potential_orth_attackers;
 
         while attackers != 0 {
             let attacker_sq = attackers.trailing_zeros() as usize;
@@ -1879,7 +2039,7 @@ impl Board {
 
             if blockers.count_ones() == 1 && our_blockers != 0 {
                 let pinned_sq = blockers.trailing_zeros() as usize;
-                pinned |= blockers; // TODO: compare with ```1u64 << pinned_sq```
+                pinned |= blockers;
                 pin_rays[pinned_sq] = between | (1u64 << attacker_sq);
             }
         }
@@ -1973,18 +2133,60 @@ impl Board {
         match self.side_to_move {
             Color::White => {
                 self.get_white_pawn_moves(moves, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_knight_moves(moves, Piece::WN, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_rook_moves(moves, Piece::WR, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_bishop_moves(moves, Piece::WB, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_queen_moves(moves, Piece::WQ, block_mask, capture_mask, pinned, &pin_rays);
-            },
+                self.get_knight_moves(moves, Piece::WN, block_mask, capture_mask, pinned);
+                self.get_rook_moves(
+                    moves,
+                    Piece::WR,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                );
+                self.get_bishop_moves(
+                    moves,
+                    Piece::WB,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                );
+                self.get_queen_moves(
+                    moves,
+                    Piece::WQ,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                );
+            }
             Color::Black => {
                 self.get_black_pawn_moves(moves, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_knight_moves(moves, Piece::BN, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_rook_moves(moves, Piece::BR, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_bishop_moves(moves, Piece::BB, block_mask, capture_mask, pinned, &pin_rays);
-                self.get_queen_moves(moves, Piece::BQ, block_mask, capture_mask, pinned, &pin_rays);
-            },
+                self.get_knight_moves(moves, Piece::BN, block_mask, capture_mask, pinned);
+                self.get_rook_moves(
+                    moves,
+                    Piece::BR,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                );
+                self.get_bishop_moves(
+                    moves,
+                    Piece::BB,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                );
+                self.get_queen_moves(
+                    moves,
+                    Piece::BQ,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                );
+            }
         }
     }
 
@@ -2004,7 +2206,8 @@ impl Board {
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
         self.get_king_moves(&mut moves, king_sq, king_danger_mask);
-        let checkers: u64 = self.compute_checkers(king_sq); // Bitmap of pieces that put the king in check
+        let checkers: u64 =
+            self.compute_checkers(king_sq, self.occ, self.side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
 
         if checkers.count_ones() > 1 {
             return moves; // If it is a double check, only king moves can be legal
@@ -2098,13 +2301,24 @@ impl Board {
         self.is_50_move_draw() || self.is_threefold_repetition() || self.is_insufficient_material()
     }
 
+    pub fn is_king_checked(&self) -> bool {
+        let attacker_color = self.side_to_move.flip();
+        let king_sq = match attacker_color {
+            Color::Black => self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+            Color::White => self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+        };
+        self.compute_checkers(king_sq, self.occ, attacker_color, &self.pieces) != 0
+    }
+
     pub fn perft(&mut self, depth: u8) -> u64 {
+        let moves = self.get_legal_moves();
         if depth == 0 {
             return 1;
+        } else if depth == 1 {
+            return moves.len() as u64;
         }
 
         let mut nodes = 0;
-        let moves = self.get_legal_moves();
 
         for mv in moves {
             // println!("Making move at depth {}: {:?}", depth, m);
