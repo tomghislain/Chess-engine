@@ -2228,7 +2228,7 @@ impl Board {
 
         self.get_non_king_moves(&mut moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep
 
-        moves // Shrink vec ?
+        moves
     }
 
     fn is_50_move_draw(&self) -> bool {
