@@ -1209,11 +1209,11 @@ impl Board {
                 let to = attacks.trailing_zeros() as u8;
                 attacks &= attacks - 1;
 
-                let mut captured_piece = Piece::None;
-                let mut flag = 0;
-                if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
-                    captured_piece = self.piece_at(to);
-                    flag = CAPTURE_FLAG;
+                let captured_piece = self.piece_at(to);
+                let flag = if captured_piece == Piece::None {
+                    0
+                } else {
+                    CAPTURE_FLAG
                 };
 
                 moves.push(Move::new(
@@ -1640,17 +1640,20 @@ impl Board {
                 let to = remaining.trailing_zeros() as u8;
                 remaining &= remaining - 1;
 
-                let flag = if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
-                    CAPTURE_FLAG
-                } else {
+                let captured_piece = self.piece_at(to);
+                let flag = if captured_piece == Piece::None {
                     0
-                };
-                let captured = if flag != 0 {
-                    self.piece_at(to)
                 } else {
-                    Piece::None
+                    CAPTURE_FLAG
                 };
-                moves.push(Move::new(from, to, rook_piece, captured, Piece::None, flag));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    rook_piece,
+                    captured_piece,
+                    Piece::None,
+                    flag,
+                ));
             }
         }
     }
@@ -1688,21 +1691,17 @@ impl Board {
                 let to = remaining.trailing_zeros() as u8;
                 remaining &= remaining - 1;
 
-                let flag = if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
-                    CAPTURE_FLAG
-                } else {
+                let captured_piece = self.piece_at(to);
+                let flag = if captured_piece == Piece::None {
                     0
-                };
-                let captured = if flag != 0 {
-                    self.piece_at(to)
                 } else {
-                    Piece::None
+                    CAPTURE_FLAG
                 };
                 moves.push(Move::new(
                     from,
                     to,
                     bishop_piece,
-                    captured,
+                    captured_piece,
                     Piece::None,
                     flag,
                 ));
@@ -1752,21 +1751,17 @@ impl Board {
                 let to = remaining.trailing_zeros() as u8;
                 remaining &= remaining - 1;
 
-                let flag = if (1u64 << to) & self.color_occ[us.flip() as usize] != 0 {
-                    CAPTURE_FLAG
-                } else {
+                let captured_piece = self.piece_at(to);
+                let flag = if captured_piece == Piece::None {
                     0
-                };
-                let captured = if flag != 0 {
-                    self.piece_at(to)
                 } else {
-                    Piece::None
+                    CAPTURE_FLAG
                 };
                 moves.push(Move::new(
                     from,
                     to,
                     queen_piece,
-                    captured,
+                    captured_piece,
                     Piece::None,
                     flag,
                 ));
@@ -1882,11 +1877,11 @@ impl Board {
             let to = attacks.trailing_zeros() as u8;
             attacks &= attacks - 1;
 
-            let mut captured_piece = Piece::None;
-            let mut flag = 0;
-            if self.color_occ[us.flip() as usize] & (1u64 << to) != 0 {
-                captured_piece = self.piece_at(to);
-                flag = CAPTURE_FLAG;
+            let captured_piece = self.piece_at(to);
+            let flag = if captured_piece == Piece::None {
+                0
+            } else {
+                CAPTURE_FLAG
             };
 
             moves.push(Move::new(
