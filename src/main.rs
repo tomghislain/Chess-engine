@@ -74,16 +74,12 @@ fn run_game(
 ) -> Result<Option<game::Color>, Box<dyn std::error::Error>> {
     let mut board = game::Board::new();
     let mut last_move_squares = None;
+    let mut moves = Vec::with_capacity(218);
 
     loop {
         if show_gui {
             crossterm::terminal::enable_raw_mode()?;
-            gui::display_board(
-                &board,
-                last_move_squares,
-                None,
-                Vec::new(),
-            );
+            gui::display_board(&board, last_move_squares, None, Vec::new());
         }
 
         let current_player = match board.side_to_move {
@@ -111,7 +107,8 @@ fn run_game(
             board.make_move(mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
-            let result = if board.get_legal_moves().is_empty() {
+            board.get_legal_moves(&mut moves);
+            let result = if moves.is_empty() {
                 board.is_king_checked()
             } else {
                 false
@@ -214,13 +211,18 @@ fn get_player_types() -> Result<(PlayerType, PlayerType), Box<dyn std::error::Er
 
 fn ask_player_type(color: &str) -> Result<PlayerType, Box<dyn std::error::Error>> {
     use PlayerType as P;
-    let player_types = [P::Input, P::RandomMove, P::Negamax { depth: 0 }, P::Mcts { iterations: 0 }];
+    let player_types = [
+        P::Input,
+        P::RandomMove,
+        P::Negamax { depth: 0 },
+        P::Mcts { iterations: 0 },
+    ];
     println!("Choose {color} player type");
     for (i, t) in player_types.iter().enumerate() {
         println!("{i}. {t}");
     }
     let index = read_usize_input()?;
-        let player_type = match index {
+    let player_type = match index {
         0 => P::Input,
         1 => P::RandomMove,
         2 => {

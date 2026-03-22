@@ -49,7 +49,8 @@ fn negamax(
         return evaluate(board);
     }
 
-    let moves = board.get_legal_moves();
+    let mut moves = Vec::with_capacity(218);
+    board.get_legal_moves(&mut moves);
     if moves.is_empty() {
         return evaluate(board);
     }
@@ -91,7 +92,9 @@ fn negamax(
 }
 
 pub fn search_root(board: &mut game::Board, depth: u8) -> Option<game::Move> {
-    if board.is_draw() || board.get_legal_moves().is_empty() {
+    let mut moves = Vec::with_capacity(218);
+    board.get_legal_moves(&mut moves);
+    if board.is_draw() || moves.is_empty() {
         return None;
     }
     let mut tt = TranspositionTable::new();
@@ -100,7 +103,6 @@ pub fn search_root(board: &mut game::Board, depth: u8) -> Option<game::Move> {
     let mut best_score = i8::MIN;
     let mut best_move = None;
 
-    let moves = board.get_legal_moves();
     for mv in moves {
         board.make_move(mv);
         let score = -negamax(board, depth, alpha, beta, &mut tt);

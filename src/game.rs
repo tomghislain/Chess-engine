@@ -69,7 +69,7 @@ pub struct Board {
     pub en_passant: u8,
     pub halfmove_clock: u8,
     pub zobrist: u64,
-    
+
     pub history: Vec<u64>,
     pub undo_stack: Vec<Undo>,
 }
@@ -160,12 +160,20 @@ impl Move {
 
     pub fn captured_piece(self) -> Piece {
         let index = ((self.0 >> 16) & 0b1111) as usize;
-        if index == 12 {Piece::None} else {Piece::PIECE_LIST[index]}
+        if index < 12 {
+            Piece::PIECE_LIST[index]
+        } else {
+            Piece::None
+        }
     }
 
     pub fn promotion(self) -> Piece {
         let index = ((self.0 >> 20) & 0b1111) as usize;
-        if index == 12 {Piece::None} else {Piece::PIECE_LIST[index]}
+        if index < 12 {
+            Piece::PIECE_LIST[index]
+        } else {
+            Piece::None
+        }
     }
 
     pub fn flags(self) -> u8 {
@@ -2193,9 +2201,8 @@ impl Board {
         }
     }
 
-    pub fn get_legal_moves(&self) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(218);
-
+    pub fn get_legal_moves(&self, moves: &mut Vec<Move>) {
+        moves.clear();
         let us = self.side_to_move;
 
         let king_sq = self.pieces[if us == Color::White {
@@ -2208,12 +2215,12 @@ impl Board {
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
-        self.get_king_moves(&mut moves, king_sq, king_danger_mask);
+        self.get_king_moves(moves, king_sq, king_danger_mask);
         let checkers: u64 =
             self.compute_checkers(king_sq, self.occ, self.side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
 
         if checkers.count_ones() > 1 {
-            return moves; // If it is a double check, only king moves can be legal
+            return; // If it is a double check, only king moves can be legal
         }
 
         // pinned: bitmap of pieces that cannot move because they would put the king in check
@@ -2225,13 +2232,11 @@ impl Board {
         let (block_mask, capture_mask) = if in_check {
             (self.compute_block_mask(king_sq, checkers), checkers)
         } else {
-            self.gen_castling_moves(&mut moves, king_danger_mask); // Castling moves can only happen when not in check
+            self.gen_castling_moves(moves, king_danger_mask); // Castling moves can only happen when not in check
             (!0u64, !0u64) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
-        self.get_non_king_moves(&mut moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep
-
-        moves
+        self.get_non_king_moves(moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep
     }
 
     fn is_50_move_draw(&self) -> bool {
@@ -2314,7 +2319,8 @@ impl Board {
     }
 
     pub fn perft(&mut self, depth: u8) -> u64 {
-        let moves = self.get_legal_moves();
+        let mut moves = Vec::with_capacity(218);
+        self.get_legal_moves(&mut moves);
         if depth == 0 {
             return 1;
         } else if depth == 1 {

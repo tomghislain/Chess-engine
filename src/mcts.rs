@@ -2,7 +2,8 @@ use crate::game;
 use rand::{RngExt, seq::SliceRandom};
 
 pub fn get_random_move(board: &mut game::Board) -> Option<game::Move> {
-    let moves = board.get_legal_moves();
+    let mut moves = Vec::with_capacity(218);
+    board.get_legal_moves(&mut moves);
     if moves.is_empty() || board.is_draw() {
         return None;
     };
@@ -24,11 +25,10 @@ struct Node {
 
 impl Node {
     fn new(board: &game::Board, parent: NodeIndex, parent_move: game::Move) -> Self {
-        let mut moves = if !board.is_draw() {
-            board.get_legal_moves()
-        } else {
-            Vec::new()
-        };
+        let mut moves = Vec::with_capacity(218);
+        if !board.is_draw() {
+            board.get_legal_moves(&mut moves);
+        }
         let mut rng = rand::rng();
         moves.shuffle(&mut rng);
         Node {
@@ -48,7 +48,8 @@ struct Tree {
 
 impl Tree {
     fn new(board: &mut game::Board) -> Self {
-        let mut moves = board.get_legal_moves();
+        let mut moves = Vec::with_capacity(218);
+        board.get_legal_moves(&mut moves);
         let mut rng = rand::rng();
         moves.shuffle(&mut rng);
         Tree {
@@ -119,8 +120,9 @@ impl Tree {
     fn rollout(&self, board: &mut game::Board) -> f32 {
         let starting_player = board.side_to_move;
         let mut rng = rand::rng();
+        let mut moves = Vec::with_capacity(218);
         while !board.is_draw() {
-            let moves = board.get_legal_moves();
+            board.get_legal_moves(&mut moves);
             let num_moves = moves.len();
             if num_moves == 0 {
                 if board.is_king_checked() {
@@ -152,7 +154,9 @@ impl Tree {
 }
 
 pub fn mcts_search(board: &mut game::Board, iteration_number: usize) -> Option<game::Move> {
-    if board.is_draw() || board.get_legal_moves().is_empty() {
+    let mut moves = Vec::with_capacity(218);
+    board.get_legal_moves(&mut moves);
+    if board.is_draw() || moves.is_empty() {
         return None;
     }
 

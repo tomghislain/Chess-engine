@@ -124,7 +124,8 @@ pub fn get_player_move(
     board: &mut game::Board,
     previous_move_squares: Option<(u8, u8)>,
 ) -> Option<game::Move> {
-    let moves = board.get_legal_moves();
+    let mut moves = Vec::with_capacity(218);
+    board.get_legal_moves(&mut moves);
     if moves.is_empty() || board.is_draw() {
         return None;
     };
