@@ -10,6 +10,7 @@ pub const BQ_CASTLE: u8 = 1 << 3;
 
 #[derive(Clone)]
 pub struct Undo {
+    pub captured_piece: Piece,
     pub castling: u8,
     pub en_passant: Square,
     pub halfmove_clock: u8,
@@ -34,8 +35,9 @@ pub struct Board {
 }
 
 impl Undo {
-    pub fn new(board: &Board) -> Self {
+    pub fn new(board: &Board, captured_piece: Piece) -> Self {
         Undo {
+            captured_piece,
             castling: board.castling,
             en_passant: board.en_passant,
             halfmove_clock: board.halfmove_clock,
@@ -267,8 +269,7 @@ impl Board {
         let us = self.side_to_move;
 
         // Remove piece if capture
-        if is_capture {
-            let c_p = mv.captured_piece();
+        let captured_piece = if is_capture {
             let c_sq = if is_en_passant {
                 if us == Color::White {
                     Square::from(mv.to().as_u8() - 8)
@@ -278,19 +279,23 @@ impl Board {
             } else {
                 mv.to()
             };
+            let c_p = self.piece_at(c_sq);
             self.remove_piece(c_p, c_sq);
             self.mailbox[c_sq.as_usize()] = Piece::None;
             let mask = 1u64 << c_sq.as_u8();
             opponent_side_mask |= mask;
             hash ^= z.piece_square[c_p as usize][c_sq.as_usize()];
-        }
+            c_p
+        } else {
+            Piece::None
+        };
 
         // Save undo information
-        let undo = Undo::new(self);
+        let undo = Undo::new(self, captured_piece);
         self.undo_stack.push(undo);
 
         // Move the played piece (plus rook for castling)
-        let moved_piece = mv.moved_piece();
+        let moved_piece = self.piece_at(mv.from());
         let moved_mask = (1u64 << mv.from().as_u8()) | (1u64 << mv.to().as_u8());
         moving_side_mask |= moved_mask;
         hash ^= z.piece_square[moved_piece as usize][mv.from().as_usize()];
@@ -388,7 +393,7 @@ impl Board {
         };
 
         if is_capture {
-            self.castling &= match mv.captured_piece() {
+            self.castling &= match captured_piece {
                 Piece::WR => {
                     if mv.to().as_u8() == 7 {
                         !WK_CASTLE
@@ -477,7 +482,7 @@ impl Board {
                 }
             }
         } else {
-            let moved_piece = mv.moved_piece();
+            let moved_piece = self.piece_at(mv.to());
             self.move_piece(moved_piece, mv.to(), mv.from());
             self.mailbox[mv.to().as_usize()] = Piece::None;
             self.mailbox[mv.from().as_usize()] = moved_piece;
@@ -502,7 +507,7 @@ impl Board {
 
         // In case of capture (and maybe en passant), restore the taken piece
         if is_capture {
-            let c_p = mv.captured_piece();
+            let c_p = undo.captured_piece;
             let c_sq = if is_en_passant {
                 match self.side_to_move {
                     Color::White => Square::from(mv.to().as_u8() - 8),

@@ -32,40 +32,12 @@ impl Board {
             };
             if is_legal {
                 if is_promotion {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        Piece::None,
-                        Piece::WN,
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        Piece::None,
-                        Piece::WB,
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        Piece::None,
-                        Piece::WR,
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WP,
-                        Piece::None,
-                        Piece::WQ,
-                        PROMOTION_FLAG,
-                    ));
+                    moves.push(Move::new(from, to, Piece::WN, PROMOTION_FLAG));
+                    moves.push(Move::new(from, to, Piece::WB, PROMOTION_FLAG));
+                    moves.push(Move::new(from, to, Piece::WR, PROMOTION_FLAG));
+                    moves.push(Move::new(from, to, Piece::WQ, PROMOTION_FLAG));
                 } else {
-                    moves.push(Move::new(from, to, Piece::WP, Piece::None, Piece::None, 0));
+                    moves.push(Move::new(from, to, Piece::None, 0));
                 }
             }
         }
@@ -84,14 +56,7 @@ impl Board {
                 (block_mask >> to.as_u8()) & 1 != 0
             };
             if is_legal {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WP,
-                    Piece::None,
-                    Piece::None,
-                    DOUBLE_PAWN_PUSH_FLAG,
-                ))
+                moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG))
             };
         }
 
@@ -108,7 +73,6 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let is_promotion = to.as_u8() > 55;
-                let captured_piece = self.piece_at(to);
                 let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
                 let is_legal = if is_pinned {
                     (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & capture_mask != 0
@@ -120,44 +84,29 @@ impl Board {
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::WP,
-                            captured_piece,
                             Piece::WN,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::WP,
-                            captured_piece,
                             Piece::WB,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::WP,
-                            captured_piece,
                             Piece::WR,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::WP,
-                            captured_piece,
                             Piece::WQ,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                     } else {
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::WP,
-                            captured_piece,
-                            Piece::None,
-                            CAPTURE_FLAG,
-                        ));
+                        moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
                     }
                 }
             }
@@ -189,8 +138,6 @@ impl Board {
                     moves.push(Move::new(
                         from,
                         to,
-                        Piece::WP,
-                        Piece::BP,
                         Piece::None,
                         CAPTURE_FLAG | EN_PASSANT_FLAG,
                     ));
@@ -219,8 +166,6 @@ impl Board {
                     moves.push(Move::new(
                         from,
                         to,
-                        Piece::WP,
-                        Piece::BP,
                         Piece::None,
                         CAPTURE_FLAG | EN_PASSANT_FLAG,
                     ));
@@ -255,40 +200,12 @@ impl Board {
             };
             if is_legal {
                 if is_promotion {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        Piece::None,
-                        Piece::BN,
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        Piece::None,
-                        Piece::BB,
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        Piece::None,
-                        Piece::BR,
-                        PROMOTION_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BP,
-                        Piece::None,
-                        Piece::BQ,
-                        PROMOTION_FLAG,
-                    ));
+                    moves.push(Move::new(from, to, Piece::BN, PROMOTION_FLAG));
+                    moves.push(Move::new(from, to, Piece::BB, PROMOTION_FLAG));
+                    moves.push(Move::new(from, to, Piece::BR, PROMOTION_FLAG));
+                    moves.push(Move::new(from, to, Piece::BQ, PROMOTION_FLAG));
                 } else {
-                    moves.push(Move::new(from, to, Piece::BP, Piece::None, Piece::None, 0));
+                    moves.push(Move::new(from, to, Piece::None, 0));
                 }
             }
         }
@@ -307,14 +224,7 @@ impl Board {
                 (block_mask >> to.as_u8()) & 1 != 0
             };
             if is_legal {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BP,
-                    Piece::None,
-                    Piece::None,
-                    DOUBLE_PAWN_PUSH_FLAG,
-                ));
+                moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
             }
         }
 
@@ -331,7 +241,6 @@ impl Board {
                 attacks &= attacks - 1;
 
                 let is_promotion = to.as_u8() < 8;
-                let captured_piece = self.piece_at(to);
                 let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
                 let is_legal = if is_pinned {
                     (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & capture_mask != 0
@@ -343,44 +252,29 @@ impl Board {
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::BP,
-                            captured_piece,
                             Piece::BN,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::BP,
-                            captured_piece,
                             Piece::BB,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::BP,
-                            captured_piece,
                             Piece::BR,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                         moves.push(Move::new(
                             from,
                             to,
-                            Piece::BP,
-                            captured_piece,
                             Piece::BQ,
                             CAPTURE_FLAG | PROMOTION_FLAG,
                         ));
                     } else {
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::BP,
-                            captured_piece,
-                            Piece::None,
-                            CAPTURE_FLAG,
-                        ));
+                        moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
                     }
                 }
             }
@@ -412,8 +306,6 @@ impl Board {
                     moves.push(Move::new(
                         from,
                         to,
-                        Piece::BP,
-                        Piece::WP,
                         Piece::None,
                         CAPTURE_FLAG | EN_PASSANT_FLAG,
                     ));
@@ -442,8 +334,6 @@ impl Board {
                     moves.push(Move::new(
                         from,
                         to,
-                        Piece::BP,
-                        Piece::WP,
                         Piece::None,
                         CAPTURE_FLAG | EN_PASSANT_FLAG,
                     ));
@@ -474,21 +364,13 @@ impl Board {
                 let to = Square::from(attacks.trailing_zeros() as u8);
                 attacks &= attacks - 1;
 
-                let captured_piece = self.piece_at(to);
-                let flag = if captured_piece == Piece::None {
+                let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
                     CAPTURE_FLAG
                 };
 
-                moves.push(Move::new(
-                    from,
-                    to,
-                    knight_piece,
-                    captured_piece,
-                    Piece::None,
-                    flag,
-                ));
+                moves.push(Move::new(from, to, Piece::None, flag));
             }
         }
     }
@@ -528,20 +410,12 @@ impl Board {
                 let to = Square::from(remaining.trailing_zeros() as u8);
                 remaining &= remaining - 1;
 
-                let captured_piece = self.piece_at(to);
-                let flag = if captured_piece == Piece::None {
+                let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
                     CAPTURE_FLAG
                 };
-                moves.push(Move::new(
-                    from,
-                    to,
-                    rook_piece,
-                    captured_piece,
-                    Piece::None,
-                    flag,
-                ));
+                moves.push(Move::new(from, to, Piece::None, flag));
             }
         }
     }
@@ -581,20 +455,12 @@ impl Board {
                 let to = Square::from(remaining.trailing_zeros() as u8);
                 remaining &= remaining - 1;
 
-                let captured_piece = self.piece_at(to);
-                let flag = if captured_piece == Piece::None {
+                let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
                     CAPTURE_FLAG
                 };
-                moves.push(Move::new(
-                    from,
-                    to,
-                    bishop_piece,
-                    captured_piece,
-                    Piece::None,
-                    flag,
-                ));
+                moves.push(Move::new(from, to, Piece::None, flag));
             }
         }
     }
@@ -643,20 +509,12 @@ impl Board {
                 let to = Square::from(remaining.trailing_zeros() as u8);
                 remaining &= remaining - 1;
 
-                let captured_piece = self.piece_at(to);
-                let flag = if captured_piece == Piece::None {
+                let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
                     CAPTURE_FLAG
                 };
-                moves.push(Move::new(
-                    from,
-                    to,
-                    queen_piece,
-                    captured_piece,
-                    Piece::None,
-                    flag,
-                ));
+                moves.push(Move::new(from, to, Piece::None, flag));
             }
         }
     }
@@ -730,25 +588,13 @@ impl Board {
             let to = Square::from(attacks.trailing_zeros() as u8);
             attacks &= attacks - 1;
 
-            let captured_piece = self.piece_at(to);
-            let flag = if captured_piece == Piece::None {
+            let flag = if self.piece_at(to) == Piece::None {
                 0
             } else {
                 CAPTURE_FLAG
             };
 
-            moves.push(Move::new(
-                king_sq,
-                to,
-                if us == Color::White {
-                    Piece::WK
-                } else {
-                    Piece::BK
-                },
-                captured_piece,
-                Piece::None,
-                flag,
-            ));
+            moves.push(Move::new(king_sq, to, Piece::None, flag));
         }
     }
 
@@ -861,8 +707,6 @@ impl Board {
                     moves.push(Move::new(
                         Square::from(4),
                         Square::from(6),
-                        Piece::WK,
-                        Piece::None,
                         Piece::None,
                         CASTLING_FLAG,
                     ));
@@ -874,8 +718,6 @@ impl Board {
                     moves.push(Move::new(
                         Square::from(4),
                         Square::from(2),
-                        Piece::WK,
-                        Piece::None,
                         Piece::None,
                         CASTLING_FLAG,
                     ));
@@ -889,8 +731,6 @@ impl Board {
                     moves.push(Move::new(
                         Square::from(60),
                         Square::from(62),
-                        Piece::BK,
-                        Piece::None,
                         Piece::None,
                         CASTLING_FLAG,
                     ));
@@ -902,8 +742,6 @@ impl Board {
                     moves.push(Move::new(
                         Square::from(60),
                         Square::from(58),
-                        Piece::BK,
-                        Piece::None,
                         Piece::None,
                         CASTLING_FLAG,
                     ));

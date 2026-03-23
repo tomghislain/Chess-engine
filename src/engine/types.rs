@@ -70,21 +70,12 @@ pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 4;
 pub struct Move(u32);
 
 impl Move {
-    pub fn new(
-        from: Square,
-        to: Square,
-        moved_piece: Piece,
-        captured_piece: Piece,
-        promotion_piece: Piece,
-        flags: u8,
-    ) -> Self {
+    pub fn new(from: Square, to: Square, promotion_piece: Piece, flags: u8) -> Self {
         Move(
             from.as_u32() // 6 bits
              | ((to.as_u32()) << 6) // 6 bits
-             | ((moved_piece as u32) << 12) // 4 bits
-             | ((captured_piece as u32)<< 16) // 4 bits
-             | ((promotion_piece as u32)<< 20) // 4 bits
-             | ((flags as u32) << 24), // 5 bits
+             | ((promotion_piece as u32)<< 12) // 4 bits
+             | ((flags as u32) << 16), // 5 bits
         )
     }
 
@@ -96,22 +87,8 @@ impl Move {
         Square(((self.0 >> 6) & 0b111111) as u8)
     }
 
-    pub fn moved_piece(self) -> Piece {
-        let index = ((self.0 >> 12) & 0b1111) as usize;
-        Piece::PIECE_LIST[index]
-    }
-
-    pub fn captured_piece(self) -> Piece {
-        let index = ((self.0 >> 16) & 0b1111) as usize;
-        if index < 12 {
-            Piece::PIECE_LIST[index]
-        } else {
-            Piece::None
-        }
-    }
-
     pub fn promotion(self) -> Piece {
-        let index = ((self.0 >> 20) & 0b1111) as usize;
+        let index = ((self.0 >> 12) & 0b1111) as usize;
         if index < 12 {
             Piece::PIECE_LIST[index]
         } else {
@@ -120,7 +97,7 @@ impl Move {
     }
 
     pub fn flags(self) -> u8 {
-        ((self.0 >> 24) & 0b11111) as u8
+        ((self.0 >> 16) & 0b11111) as u8
     }
 }
 
