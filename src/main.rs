@@ -1,8 +1,9 @@
-mod game;
+mod ai;
+mod engine;
 mod gui;
-mod mcts;
-mod negamax;
 
+use crate::ai::{mcts, negamax};
+use crate::engine::{Board, Color};
 use std::env;
 
 #[derive(Clone, Copy)]
@@ -30,14 +31,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if env::args().any(|arg| arg == "--bench") {
         play_batch_game(true)
     } else if env::args().any(|arg| arg == "--perft") {
-        let mut board = game::Board::new();
+        let mut board = Board::new();
         let depth = 7;
         let start = std::time::Instant::now();
         println!("Number of moves at depth {}: {}", depth, board.perft(depth));
         println!("Time taken: {:?}", start.elapsed());
         Ok(())
     } else if env::args().any(|arg| arg == "--mcts") {
-        let mut board = game::Board::new();
+        let mut board = Board::new();
         let iterations = 100_000;
         mcts::mcts_search(&mut board, iterations);
         Ok(())
@@ -71,8 +72,8 @@ fn run_game(
     white: PlayerType,
     black: PlayerType,
     show_gui: bool,
-) -> Result<Option<game::Color>, Box<dyn std::error::Error>> {
-    let mut board = game::Board::new();
+) -> Result<Option<Color>, Box<dyn std::error::Error>> {
+    let mut board = Board::new();
     let mut last_move_squares = None;
     let mut moves = Vec::with_capacity(218);
 
@@ -83,8 +84,8 @@ fn run_game(
         }
 
         let current_player = match board.side_to_move {
-            game::Color::White => white,
-            game::Color::Black => black,
+            Color::White => white,
+            Color::Black => black,
         };
 
         let mv_result = match current_player {
@@ -171,9 +172,9 @@ fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
         match result {
             Some(winner) => {
                 let a_won = if a_is_white {
-                    winner == game::Color::White
+                    winner == Color::White
                 } else {
-                    winner == game::Color::Black
+                    winner == Color::Black
                 };
 
                 if a_won {

@@ -1,7 +1,7 @@
-use crate::game;
+use crate::engine::{Board, Move};
 use rand::{RngExt, seq::SliceRandom};
 
-pub fn get_random_move(board: &mut game::Board) -> Option<game::Move> {
+pub fn get_random_move(board: &mut Board) -> Option<Move> {
     let mut moves = Vec::with_capacity(218);
     board.get_legal_moves(&mut moves);
     if moves.is_empty() || board.is_draw() {
@@ -17,14 +17,14 @@ type NodeIndex = usize;
 struct Node {
     parent: Option<NodeIndex>,
     children: Vec<NodeIndex>,
-    untried_moves: Vec<game::Move>,
+    untried_moves: Vec<Move>,
     visits: u32,
     wins: f32,
-    move_from_parent: Option<game::Move>,
+    move_from_parent: Option<Move>,
 }
 
 impl Node {
-    fn new(board: &game::Board, parent: NodeIndex, parent_move: game::Move) -> Self {
+    fn new(board: &Board, parent: NodeIndex, parent_move: Move) -> Self {
         let mut moves = Vec::with_capacity(218);
         if !board.is_draw() {
             board.get_legal_moves(&mut moves);
@@ -47,7 +47,7 @@ struct Tree {
 }
 
 impl Tree {
-    fn new(board: &mut game::Board) -> Self {
+    fn new(board: &mut Board) -> Self {
         let mut moves = Vec::with_capacity(218);
         board.get_legal_moves(&mut moves);
         let mut rng = rand::rng();
@@ -90,7 +90,7 @@ impl Tree {
         best_child
     }
 
-    fn select(&self, board: &mut game::Board) -> NodeIndex {
+    fn select(&self, board: &mut Board) -> NodeIndex {
         let mut current: NodeIndex = 0; // Start at root
         while self.nodes[current].untried_moves.is_empty()
             && !self.nodes[current].children.is_empty()
@@ -105,7 +105,7 @@ impl Tree {
         current
     }
 
-    fn expand(&mut self, board: &mut game::Board, node: NodeIndex) -> NodeIndex {
+    fn expand(&mut self, board: &mut Board, node: NodeIndex) -> NodeIndex {
         if let Some(untried_move) = self.nodes[node].untried_moves.pop() {
             board.make_move(untried_move);
             let child_idx = self.nodes.len();
@@ -117,7 +117,7 @@ impl Tree {
         }
     }
 
-    fn rollout(&self, board: &mut game::Board) -> f32 {
+    fn rollout(&self, board: &mut Board) -> f32 {
         let starting_player = board.side_to_move;
         let mut rng = rand::rng();
         let mut moves = Vec::with_capacity(218);
@@ -153,7 +153,7 @@ impl Tree {
     }
 }
 
-pub fn mcts_search(board: &mut game::Board, iteration_number: usize) -> Option<game::Move> {
+pub fn mcts_search(board: &mut Board, iteration_number: usize) -> Option<Move> {
     let mut moves = Vec::with_capacity(218);
     board.get_legal_moves(&mut moves);
     if board.is_draw() || moves.is_empty() {

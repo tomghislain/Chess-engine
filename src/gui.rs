@@ -1,4 +1,4 @@
-use crate::game;
+use crate::engine::{Board, Move, Piece, types};
 use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 
@@ -35,7 +35,7 @@ fn sq_to_top_left(sq: u8) -> (u16, u16) {
 }
 
 pub fn display_board(
-    board: &game::Board,
+    board: &Board,
     previous_move_squares: Option<(u8, u8)>,
     move_from: Option<u8>,
     possible_to_squares: Vec<u8>,
@@ -71,7 +71,7 @@ pub fn display_board(
         let piece = board.piece_at(sq);
         // TODO: match piece enum with corresponding ascii character
         let pieces_colors = [WHITE_PIECES_COLOR, BLACK_PIECES_COLOR];
-        let (piece_string, piece_color) = if piece != game::Piece::None {
+        let (piece_string, piece_color) = if piece != Piece::None {
             (
                 PIECE_STRINGS[piece as usize % 6],
                 pieces_colors[piece as usize / 6],
@@ -120,10 +120,7 @@ fn coords_to_sq(col: u16, row: u16) -> Option<u8> {
     }
 }
 
-pub fn get_player_move(
-    board: &mut game::Board,
-    previous_move_squares: Option<(u8, u8)>,
-) -> Option<game::Move> {
+pub fn get_player_move(board: &mut Board, previous_move_squares: Option<(u8, u8)>) -> Option<Move> {
     let mut moves = Vec::with_capacity(218);
     board.get_legal_moves(&mut moves);
     if moves.is_empty() || board.is_draw() {
@@ -144,7 +141,7 @@ pub fn get_player_move(
             let clicked = coords_to_sq(column, row);
             if let Some(clicked_sq) = clicked {
                 if from.is_some() {
-                    let valid_moves: Vec<&game::Move> =
+                    let valid_moves: Vec<&Move> =
                         moves_from.iter().filter(|m| m.to() == clicked_sq).collect();
                     let move_number = valid_moves.len();
                     if move_number == 1 {
@@ -155,7 +152,7 @@ pub fn get_player_move(
                             **valid_moves
                                 .iter()
                                 .filter(|&m| m.promotion() == promotion_piece)
-                                .collect::<Vec<&&game::Move>>()[0],
+                                .collect::<Vec<&&Move>>()[0],
                         );
                     } else {
                         from = Some(clicked_sq);
@@ -201,7 +198,7 @@ pub fn get_player_move(
     }
 }
 
-fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
+fn get_promotion_piece(sq: u8, color: types::Color) -> Piece {
     let mut stdout = std::io::stdout();
     let (sq_col, sq_row) = sq_to_top_left(sq);
 
@@ -241,26 +238,26 @@ fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
                 match (local_y, local_x) {
                     (0, 0) | (0, 1) | (0, 2) => {
                         return match color {
-                            game::Color::White => game::Piece::WN,
-                            game::Color::Black => game::Piece::BN,
+                            types::Color::White => Piece::WN,
+                            types::Color::Black => Piece::BN,
                         };
                     }
                     (0, 3) | (0, 4) | (0, 5) => {
                         return match color {
-                            game::Color::White => game::Piece::WB,
-                            game::Color::Black => game::Piece::BB,
+                            types::Color::White => Piece::WB,
+                            types::Color::Black => Piece::BB,
                         };
                     }
                     (2, 0) | (2, 1) | (2, 2) => {
                         return match color {
-                            game::Color::White => game::Piece::WR,
-                            game::Color::Black => game::Piece::BR,
+                            types::Color::White => Piece::WR,
+                            types::Color::Black => Piece::BR,
                         };
                     }
                     (2, 3) | (2, 4) | (2, 5) => {
                         return match color {
-                            game::Color::White => game::Piece::WQ,
-                            game::Color::Black => game::Piece::BQ,
+                            types::Color::White => Piece::WQ,
+                            types::Color::Black => Piece::BQ,
                         };
                     }
                     _ => {}
@@ -277,7 +274,7 @@ fn get_promotion_piece(sq: u8, color: game::Color) -> game::Piece {
     }
 }
 
-pub fn print_game_result(board: &game::Board, result: bool) {
+pub fn print_game_result(board: &Board, result: bool) {
     let mut stdout = std::io::stdout();
 
     let result_row = 8 * SQ_HEIGHT;

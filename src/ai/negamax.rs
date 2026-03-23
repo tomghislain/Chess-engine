@@ -1,4 +1,4 @@
-use crate::game;
+use crate::engine::{Board, Move};
 use std::collections::HashMap;
 
 enum TTFlag {
@@ -16,12 +16,12 @@ struct TTEntry {
 
 type TranspositionTable = HashMap<u64, TTEntry>;
 
-fn evaluate(_board: &game::Board) -> i8 {
+fn evaluate(_board: &Board) -> i8 {
     1 // TODO: return material value
 }
 
 fn negamax(
-    board: &mut game::Board,
+    board: &mut Board,
     depth: u8,
     mut alpha: i8,
     mut beta: i8,
@@ -91,7 +91,7 @@ fn negamax(
     best_score
 }
 
-pub fn search_root(board: &mut game::Board, depth: u8) -> Option<game::Move> {
+pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
     let mut moves = Vec::with_capacity(218);
     board.get_legal_moves(&mut moves);
     if board.is_draw() || moves.is_empty() {
