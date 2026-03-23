@@ -1,4 +1,4 @@
-use crate::engine::{Board, Move, Piece, types};
+use crate::engine::{Board, Move, Piece, Square, types};
 use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 
@@ -36,9 +36,9 @@ fn sq_to_top_left(sq: u8) -> (u16, u16) {
 
 pub fn display_board(
     board: &Board,
-    previous_move_squares: Option<(u8, u8)>,
+    previous_move_squares: Option<(Square, Square)>,
     move_from: Option<u8>,
-    possible_to_squares: Vec<u8>,
+    possible_to_squares: Vec<Square>,
 ) {
     //TODO: Handle terminal too small for board
     let mut stdout = std::io::stdout();
@@ -47,8 +47,10 @@ pub fn display_board(
         cursor::Hide,
         terminal::Clear(terminal::ClearType::All)
     );
-    for sq in 0..64 {
-        let index = ((sq ^ (sq >> 3)) & 1) as usize;
+    for sq_index in 0..64 {
+        let sq = Square::from(sq_index);
+
+        let index = ((sq_index ^ (sq_index >> 3)) & 1) as usize;
         let sq_colors = [DARK_SQUARE_COLOR, LIGHT_SQUARE_COLOR];
         let mut sq_color = sq_colors[index];
         if let Some((previous_from, previous_to)) = previous_move_squares
@@ -57,18 +59,18 @@ pub fn display_board(
             sq_color = PREVIOUS_MOVE_COLOR;
         }
 
-        if possible_to_squares.contains(&sq) {
+        if possible_to_squares.contains(&Square::from(sq_index)) {
             sq_color = POSSIBLE_SQUARES_COLOR;
         }
 
         if let Some(from_sq) = move_from
-            && sq == from_sq
+            && sq_index == from_sq
         {
             sq_color = SELECTED_SQUARE_COLOR;
         }
 
         let _ = queue!(stdout, crossterm::style::SetBackgroundColor(sq_color),);
-        let piece = board.piece_at(sq);
+        let piece = board.piece_at(Square::from(sq_index));
         // TODO: match piece enum with corresponding ascii character
         let pieces_colors = [WHITE_PIECES_COLOR, BLACK_PIECES_COLOR];
         let (piece_string, piece_color) = if piece != Piece::None {
@@ -80,7 +82,7 @@ pub fn display_board(
             (EMPTY_SQUARE_STRING, style::Color::Red)
         };
         let _ = queue!(stdout, crossterm::style::SetForegroundColor(piece_color),);
-        let (col, row) = sq_to_top_left(sq);
+        let (col, row) = sq_to_top_left(sq_index);
         for line in 0..SQ_HEIGHT {
             let _ = queue!(
                 stdout,
@@ -120,7 +122,10 @@ fn coords_to_sq(col: u16, row: u16) -> Option<u8> {
     }
 }
 
-pub fn get_player_move(board: &mut Board, previous_move_squares: Option<(u8, u8)>) -> Option<Move> {
+pub fn get_player_move(
+    board: &mut Board,
+    previous_move_squares: Option<(Square, Square)>,
+) -> Option<Move> {
     let mut moves = Vec::with_capacity(218);
     board.get_legal_moves(&mut moves);
     if moves.is_empty() || board.is_draw() {
@@ -141,8 +146,10 @@ pub fn get_player_move(board: &mut Board, previous_move_squares: Option<(u8, u8)
             let clicked = coords_to_sq(column, row);
             if let Some(clicked_sq) = clicked {
                 if from.is_some() {
-                    let valid_moves: Vec<&Move> =
-                        moves_from.iter().filter(|m| m.to() == clicked_sq).collect();
+                    let valid_moves: Vec<&Move> = moves_from
+                        .iter()
+                        .filter(|m| m.to() == Square::from(clicked_sq))
+                        .collect();
                     let move_number = valid_moves.len();
                     if move_number == 1 {
                         return Some(*valid_moves[0]);
@@ -159,7 +166,7 @@ pub fn get_player_move(board: &mut Board, previous_move_squares: Option<(u8, u8)
                         moves_from = moves
                             .iter()
                             .filter_map(|&m| {
-                                if m.from() == clicked_sq {
+                                if m.from() == Square::from(clicked_sq) {
                                     Some(m)
                                 } else {
                                     None
@@ -172,7 +179,7 @@ pub fn get_player_move(board: &mut Board, previous_move_squares: Option<(u8, u8)
                     moves_from = moves_from
                         .iter()
                         .filter_map(|&m| {
-                            if m.from() == clicked_sq {
+                            if m.from() == Square::from(clicked_sq) {
                                 Some(m)
                             } else {
                                 None

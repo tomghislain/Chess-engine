@@ -2,7 +2,7 @@ use crate::engine::types::{
     CAPTURE_FLAG, CASTLING_FLAG, Color, DOUBLE_PAWN_PUSH_FLAG, EN_PASSANT_FLAG, Move,
     PROMOTION_FLAG, Piece,
 };
-use crate::engine::zobrist;
+use crate::engine::{Square, zobrist};
 pub const WK_CASTLE: u8 = 1 << 0;
 pub const WQ_CASTLE: u8 = 1 << 1;
 pub const BK_CASTLE: u8 = 1 << 2;
@@ -11,7 +11,7 @@ pub const BQ_CASTLE: u8 = 1 << 3;
 #[derive(Clone)]
 pub struct Undo {
     pub castling: u8,
-    pub en_passant: u8,
+    pub en_passant: Square,
     pub halfmove_clock: u8,
     pub zobrist: u64,
 }
@@ -25,7 +25,7 @@ pub struct Board {
 
     pub side_to_move: Color,
     pub castling: u8,
-    pub en_passant: u8,
+    pub en_passant: Square,
     pub halfmove_clock: u8,
     pub zobrist: u64,
 
@@ -78,8 +78,8 @@ impl Board {
         }
 
         // En passant
-        if self.en_passant < 64 {
-            let file = self.en_passant % 8;
+        if self.en_passant.as_u8() < 64 {
+            let file = self.en_passant.as_u8() % 8;
             hash ^= z.en_passant[file as usize];
         }
 
@@ -205,7 +205,7 @@ impl Board {
 
         let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
 
-        let en_passant = 64;
+        let en_passant = Square::from(64);
         let halfmove_clock = 0;
         let zobrist = 0;
         let history = Vec::with_capacity(256);
@@ -229,25 +229,25 @@ impl Board {
         board.history.push(board.zobrist);
         board
     }
-    pub fn piece_at(&self, sq: u8) -> Piece {
-        self.mailbox[sq as usize]
+    pub fn piece_at(&self, sq: Square) -> Piece {
+        self.mailbox[sq.as_usize()]
     }
 
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
-    fn remove_piece(&mut self, p: Piece, sq: u8) {
-        let mask = 1 << sq;
+    fn remove_piece(&mut self, p: Piece, sq: Square) {
+        let mask = 1 << sq.as_u8();
         self.pieces[p as usize] &= !mask;
     }
 
     // Sets the bit to 1 at index sq of the bitmap at index p of self.pieces
-    fn add_piece(&mut self, p: Piece, sq: u8) {
-        let mask = 1 << sq;
+    fn add_piece(&mut self, p: Piece, sq: Square) {
+        let mask = 1 << sq.as_u8();
         self.pieces[p as usize] |= mask;
     }
 
     // Flips the bits at the from and to index in the bitmap at index p of self.pieces
-    fn move_piece(&mut self, p: Piece, from: u8, to: u8) {
-        let mask = 1 << from | 1 << to;
+    fn move_piece(&mut self, p: Piece, from: Square, to: Square) {
+        let mask = 1 << from.as_u8() | 1 << to.as_u8();
         self.pieces[p as usize] ^= mask;
     }
 
@@ -271,18 +271,18 @@ impl Board {
             let c_p = mv.captured_piece();
             let c_sq = if is_en_passant {
                 if us == Color::White {
-                    mv.to() - 8
+                    Square::from(mv.to().as_u8() - 8)
                 } else {
-                    mv.to() + 8
+                    Square::from(mv.to().as_u8() + 8)
                 }
             } else {
                 mv.to()
             };
             self.remove_piece(c_p, c_sq);
-            self.mailbox[c_sq as usize] = Piece::None;
-            let mask = 1u64 << c_sq;
+            self.mailbox[c_sq.as_usize()] = Piece::None;
+            let mask = 1u64 << c_sq.as_u8();
             opponent_side_mask |= mask;
-            hash ^= z.piece_square[c_p as usize][c_sq as usize];
+            hash ^= z.piece_square[c_p as usize][c_sq.as_usize()];
         }
 
         // Save undo information
@@ -291,40 +291,40 @@ impl Board {
 
         // Move the played piece (plus rook for castling)
         let moved_piece = mv.moved_piece();
-        let moved_mask = (1u64 << mv.from()) | (1u64 << mv.to());
+        let moved_mask = (1u64 << mv.from().as_u8()) | (1u64 << mv.to().as_u8());
         moving_side_mask |= moved_mask;
-        hash ^= z.piece_square[moved_piece as usize][mv.from() as usize];
+        hash ^= z.piece_square[moved_piece as usize][mv.from().as_usize()];
 
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(moved_piece, mv.from());
-            self.mailbox[mv.from() as usize] = Piece::None;
+            self.mailbox[mv.from().as_usize()] = Piece::None;
             self.add_piece(promotion_piece, mv.to());
-            self.mailbox[mv.to() as usize] = promotion_piece;
-            hash ^= z.piece_square[promotion_piece as usize][mv.to() as usize];
+            self.mailbox[mv.to().as_usize()] = promotion_piece;
+            hash ^= z.piece_square[promotion_piece as usize][mv.to().as_usize()];
         } else {
             self.move_piece(moved_piece, mv.from(), mv.to());
-            self.mailbox[mv.from() as usize] = Piece::None;
-            self.mailbox[mv.to() as usize] = moved_piece;
-            hash ^= z.piece_square[moved_piece as usize][mv.to() as usize];
+            self.mailbox[mv.from().as_usize()] = Piece::None;
+            self.mailbox[mv.to().as_usize()] = moved_piece;
+            hash ^= z.piece_square[moved_piece as usize][mv.to().as_usize()];
 
             if is_castling {
-                let (rook, rook_from, rook_to) = match mv.to() {
-                    62 => (Piece::BR, 63, 61), // black king side
-                    58 => (Piece::BR, 56, 59), // black queen side
-                    6 => (Piece::WR, 7, 5),    // white king side
-                    2 => (Piece::WR, 0, 3),    // white queen side
+                let (rook, rook_from, rook_to) = match mv.to().as_u8() {
+                    62 => (Piece::BR, Square::from(63), Square::from(61)), // black king side
+                    58 => (Piece::BR, Square::from(56), Square::from(59)), // black queen side
+                    6 => (Piece::WR, Square::from(7), Square::from(5)),    // white king side
+                    2 => (Piece::WR, Square::from(0), Square::from(3)),    // white queen side
                     _ => unreachable!(),
                 };
 
                 self.move_piece(rook, rook_from, rook_to);
-                self.mailbox[rook_from as usize] = Piece::None;
-                self.mailbox[rook_to as usize] = rook;
+                self.mailbox[rook_from.as_usize()] = Piece::None;
+                self.mailbox[rook_to.as_usize()] = rook;
 
-                let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
+                let rook_mask = (1u64 << rook_from.as_u8()) | (1u64 << rook_to.as_u8());
                 moving_side_mask |= rook_mask;
-                hash ^= z.piece_square[rook as usize][rook_from as usize];
-                hash ^= z.piece_square[rook as usize][rook_to as usize];
+                hash ^= z.piece_square[rook as usize][rook_from.as_usize()];
+                hash ^= z.piece_square[rook as usize][rook_to.as_usize()];
             }
         }
 
@@ -334,17 +334,17 @@ impl Board {
         self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
 
         // Update en passant square
-        if self.en_passant < 64 {
-            let file = self.en_passant % 8;
+        if self.en_passant.as_u8() < 64 {
+            let file = self.en_passant.as_u8() % 8;
             hash ^= z.en_passant[file as usize];
         }
-        self.en_passant = if is_double_pawn_push {
-            (mv.from() + mv.to()) / 2
+        self.en_passant = Square::from(if is_double_pawn_push {
+            (mv.from().as_u8() + mv.to().as_u8()) / 2
         } else {
             64
-        };
-        if self.en_passant < 64 {
-            let file = self.en_passant % 8;
+        });
+        if self.en_passant.as_u8() < 64 {
+            let file = self.en_passant.as_u8() % 8;
             hash ^= z.en_passant[file as usize];
         }
 
@@ -367,18 +367,18 @@ impl Board {
             Piece::WK => !(WK_CASTLE | WQ_CASTLE),
             Piece::BK => !(BK_CASTLE | BQ_CASTLE),
             Piece::WR => {
-                if mv.from() == 7 {
+                if mv.from().as_u8() == 7 {
                     !WK_CASTLE
-                } else if mv.from() == 0 {
+                } else if mv.from().as_u8() == 0 {
                     !WQ_CASTLE
                 } else {
                     !0
                 }
             }
             Piece::BR => {
-                if mv.from() == 63 {
+                if mv.from().as_u8() == 63 {
                     !BK_CASTLE
-                } else if mv.from() == 56 {
+                } else if mv.from().as_u8() == 56 {
                     !BQ_CASTLE
                 } else {
                     !0
@@ -390,18 +390,18 @@ impl Board {
         if is_capture {
             self.castling &= match mv.captured_piece() {
                 Piece::WR => {
-                    if mv.to() == 7 {
+                    if mv.to().as_u8() == 7 {
                         !WK_CASTLE
-                    } else if mv.to() == 0 {
+                    } else if mv.to().as_u8() == 0 {
                         !WQ_CASTLE
                     } else {
                         !0
                     }
                 }
                 Piece::BR => {
-                    if mv.to() == 63 {
+                    if mv.to().as_u8() == 63 {
                         !BK_CASTLE
-                    } else if mv.to() == 56 {
+                    } else if mv.to().as_u8() == 56 {
                         !BQ_CASTLE
                     } else {
                         !0
@@ -460,42 +460,42 @@ impl Board {
         let mut opponent_side_mask: u64 = 0;
 
         // Move back the piece (checking for promotion and castling)
-        moving_side_mask |= (1u64 << mv.to()) | (1u64 << mv.from());
+        moving_side_mask |= (1u64 << mv.to().as_u8()) | (1u64 << mv.from().as_u8());
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(promotion_piece, mv.to());
-            self.mailbox[mv.to() as usize] = Piece::None;
+            self.mailbox[mv.to().as_usize()] = Piece::None;
 
             match self.side_to_move {
                 Color::White => {
                     self.add_piece(Piece::WP, mv.from());
-                    self.mailbox[mv.from() as usize] = Piece::WP;
+                    self.mailbox[mv.from().as_usize()] = Piece::WP;
                 }
                 Color::Black => {
                     self.add_piece(Piece::BP, mv.from());
-                    self.mailbox[mv.from() as usize] = Piece::BP;
+                    self.mailbox[mv.from().as_usize()] = Piece::BP;
                 }
             }
         } else {
             let moved_piece = mv.moved_piece();
             self.move_piece(moved_piece, mv.to(), mv.from());
-            self.mailbox[mv.to() as usize] = Piece::None;
-            self.mailbox[mv.from() as usize] = moved_piece;
+            self.mailbox[mv.to().as_usize()] = Piece::None;
+            self.mailbox[mv.from().as_usize()] = moved_piece;
 
             if is_castling {
-                let (rook, rook_from, rook_to) = match mv.to() {
-                    62 => (Piece::BR, 61, 63), // black king side
-                    58 => (Piece::BR, 59, 56), // black queen side
-                    6 => (Piece::WR, 5, 7),    // white king side
-                    2 => (Piece::WR, 3, 0),    // white queen side
+                let (rook, rook_from, rook_to) = match mv.to().as_u8() {
+                    62 => (Piece::BR, Square::from(61), Square::from(63)), // black king side
+                    58 => (Piece::BR, Square::from(59), Square::from(56)), // black queen side
+                    6 => (Piece::WR, Square::from(5), Square::from(7)),    // white king side
+                    2 => (Piece::WR, Square::from(3), Square::from(0)),    // white queen side
                     _ => unreachable!(),
                 };
 
                 self.move_piece(rook, rook_from, rook_to);
-                self.mailbox[rook_from as usize] = Piece::None;
-                self.mailbox[rook_to as usize] = rook;
+                self.mailbox[rook_from.as_usize()] = Piece::None;
+                self.mailbox[rook_to.as_usize()] = rook;
 
-                let rook_mask = (1u64 << rook_from) | (1u64 << rook_to);
+                let rook_mask = (1u64 << rook_from.as_u8()) | (1u64 << rook_to.as_u8());
                 moving_side_mask |= rook_mask;
             }
         }
@@ -505,16 +505,16 @@ impl Board {
             let c_p = mv.captured_piece();
             let c_sq = if is_en_passant {
                 match self.side_to_move {
-                    Color::White => mv.to() - 8,
-                    Color::Black => mv.to() + 8,
+                    Color::White => Square::from(mv.to().as_u8() - 8),
+                    Color::Black => Square::from(mv.to().as_u8() + 8),
                 }
             } else {
                 mv.to()
             };
-            let sq_mask = 1u64 << c_sq;
+            let sq_mask = 1u64 << c_sq.as_u8();
             opponent_side_mask |= sq_mask;
             self.add_piece(c_p, c_sq);
-            self.mailbox[c_sq as usize] = c_p;
+            self.mailbox[c_sq.as_usize()] = c_p;
         }
 
         // Recompute occupancy
@@ -616,8 +616,8 @@ impl Board {
     pub fn is_king_checked(&self) -> bool {
         let attacker_color = self.side_to_move.flip();
         let king_sq = match attacker_color {
-            Color::Black => self.pieces[Piece::WK as usize].trailing_zeros() as u8,
-            Color::White => self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+            Color::Black => Square::from(self.pieces[Piece::WK as usize].trailing_zeros() as u8),
+            Color::White => Square::from(self.pieces[Piece::BK as usize].trailing_zeros() as u8),
         };
         self.compute_checkers(king_sq, self.occ, attacker_color, &self.pieces) != 0
     }

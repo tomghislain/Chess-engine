@@ -1,11 +1,8 @@
-use crate::engine::bitboards::{
-    BETWEEN, BISHOP_ATTACKS, BISHOP_MAGIC_NUMBERS, BISHOP_MASKS, BISHOP_SHIFTS, BLACK_PAWN_ATTACKS,
-    FILE_A, FILE_H, KING_ATTACKS, KNIGHT_ATTACKS, RANK_2, RANK_7, ROOK_ATTACKS, ROOK_MAGIC_NUMBERS,
-    ROOK_MASKS, ROOK_SHIFTS, WHITE_PAWN_ATTACKS,
-};
+use crate::engine::bitboards::*;
 use crate::engine::board::{BK_CASTLE, BQ_CASTLE, WK_CASTLE, WQ_CASTLE};
 use crate::engine::types::{
     CAPTURE_FLAG, CASTLING_FLAG, Color, DOUBLE_PAWN_PUSH_FLAG, EN_PASSANT_FLAG, PROMOTION_FLAG,
+    Square,
 };
 use crate::engine::{Board, Move, Piece};
 impl Board {
@@ -23,15 +20,15 @@ impl Board {
         // Single pushes
         let mut single_push = (pawns << 8) & empty;
         while single_push != 0 {
-            let to = single_push.trailing_zeros() as u8;
+            let to = Square::from(single_push.trailing_zeros() as u8);
             single_push &= single_push - 1;
-            let from = to - 8;
-            let is_promotion = to > 55;
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let from = Square::from(to.as_u8() - 8);
+            let is_promotion = to.as_u8() > 55;
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
             let is_legal = if is_pinned {
-                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
+                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
             } else {
-                (block_mask >> to) & 1 != 0
+                (block_mask >> to.as_u8()) & 1 != 0
             };
             if is_legal {
                 if is_promotion {
@@ -77,14 +74,14 @@ impl Board {
         let first_push = ((pawns & RANK_2) << 8) & empty;
         let mut double_push = (first_push << 8) & empty;
         while double_push != 0 {
-            let to = double_push.trailing_zeros() as u8;
+            let to = Square::from(double_push.trailing_zeros() as u8);
             double_push &= double_push - 1;
-            let from = to - 16;
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let from = Square::from(to.as_u8() - 16);
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
             let is_legal = if is_pinned {
-                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
+                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
             } else {
-                (block_mask >> to) & 1 != 0
+                (block_mask >> to.as_u8()) & 1 != 0
             };
             if is_legal {
                 moves.push(Move::new(
@@ -101,22 +98,22 @@ impl Board {
         // Captures
         let mut captures = pawns;
         while captures != 0 {
-            let from = captures.trailing_zeros() as u8;
+            let from = Square::from(captures.trailing_zeros() as u8);
             captures &= captures - 1;
 
-            let mut attacks = WHITE_PAWN_ATTACKS[from as usize] & self.color_occ[1];
+            let mut attacks = WHITE_PAWN_ATTACKS[from.as_usize()] & self.color_occ[1];
 
             while attacks != 0 {
-                let to = attacks.trailing_zeros() as u8;
+                let to = Square::from(attacks.trailing_zeros() as u8);
                 attacks &= attacks - 1;
 
-                let is_promotion = to > 55;
+                let is_promotion = to.as_u8() > 55;
                 let captured_piece = self.piece_at(to);
-                let is_pinned = (pinned >> from) & 1 != 0;
+                let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
                 let is_legal = if is_pinned {
-                    (1u64 << to) & pin_rays[from as usize] & capture_mask != 0
+                    (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & capture_mask != 0
                 } else {
-                    (capture_mask >> to) & 1 != 0
+                    (capture_mask >> to.as_u8()) & 1 != 0
                 };
                 if is_legal {
                     if is_promotion {
@@ -167,20 +164,23 @@ impl Board {
         }
 
         // En passant
-        if self.en_passant < 64 {
-            let en_passant_mask = 1 << self.en_passant;
+        if self.en_passant.as_u8() < 64 {
+            let en_passant_mask = 1 << self.en_passant.as_u8();
             let mut left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
             while left_en_passant != 0 {
-                let to = left_en_passant.trailing_zeros() as u8;
+                let to = Square::from(left_en_passant.trailing_zeros() as u8);
                 left_en_passant &= left_en_passant - 1;
-                let from = to - 7;
-                let captured_sq = to - 8;
-                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let from = Square::from(to.as_u8() - 7);
+                let captured_sq = to.as_u8() - 8;
+                let changed_occ = self.occ
+                    ^ (1u64 << from.as_u8())
+                    ^ (1u64 << captured_sq)
+                    ^ (1u64 << to.as_u8());
                 let mut changed_pieces = self.pieces;
                 changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq;
-                changed_pieces[Piece::WP as usize] ^= (1u64 << to) | (1u64 << from);
+                changed_pieces[Piece::WP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
                 let checkers = self.compute_checkers(
-                    self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+                    Square::from(self.pieces[Piece::WK as usize].trailing_zeros() as u8),
                     changed_occ,
                     Color::Black,
                     &changed_pieces,
@@ -198,16 +198,19 @@ impl Board {
             }
             let mut right_en_passant = ((pawns << 9) & !FILE_A) & en_passant_mask;
             while right_en_passant != 0 {
-                let to = right_en_passant.trailing_zeros() as u8;
+                let to = Square::from(right_en_passant.trailing_zeros() as u8);
                 right_en_passant &= right_en_passant - 1;
-                let from = to - 9;
-                let captured_sq = to - 8;
-                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let from = Square::from(to.as_u8() - 9);
+                let captured_sq = Square::from(to.as_u8() - 8);
+                let changed_occ = self.occ
+                    ^ (1u64 << from.as_u8())
+                    ^ (1u64 << captured_sq.as_u8())
+                    ^ (1u64 << to.as_u8());
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq;
-                changed_pieces[Piece::WP as usize] ^= (1u64 << to) | (1u64 << from);
+                changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq.as_u8();
+                changed_pieces[Piece::WP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
                 let checkers = self.compute_checkers(
-                    self.pieces[Piece::WK as usize].trailing_zeros() as u8,
+                    Square::from(self.pieces[Piece::WK as usize].trailing_zeros() as u8),
                     changed_occ,
                     Color::Black,
                     &changed_pieces,
@@ -240,15 +243,15 @@ impl Board {
         // Single pushes
         let mut single_push = (pawns >> 8) & empty;
         while single_push != 0 {
-            let to = single_push.trailing_zeros() as u8;
+            let to = Square::from(single_push.trailing_zeros() as u8);
             single_push &= single_push - 1;
-            let from = to + 8;
-            let is_promotion = to < 8;
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let from = Square::from(to.as_u8() + 8);
+            let is_promotion = to.as_u8() < 8;
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
             let is_legal = if is_pinned {
-                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
+                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
             } else {
-                (block_mask >> to) & 1 != 0
+                (block_mask >> to.as_u8()) & 1 != 0
             };
             if is_legal {
                 if is_promotion {
@@ -294,14 +297,14 @@ impl Board {
         let first_push = ((pawns & RANK_7) >> 8) & empty;
         let mut double_push = (first_push >> 8) & empty;
         while double_push != 0 {
-            let to = double_push.trailing_zeros() as u8;
+            let to = Square::from(double_push.trailing_zeros() as u8);
             double_push &= double_push - 1;
-            let from = to + 16;
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let from = Square::from(to.as_u8() + 16);
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
             let is_legal = if is_pinned {
-                (1u64 << to) & pin_rays[from as usize] & block_mask != 0
+                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
             } else {
-                (block_mask >> to) & 1 != 0
+                (block_mask >> to.as_u8()) & 1 != 0
             };
             if is_legal {
                 moves.push(Move::new(
@@ -318,22 +321,22 @@ impl Board {
         // Captures
         let mut captures = pawns;
         while captures != 0 {
-            let from = captures.trailing_zeros() as u8;
+            let from = Square::from(captures.trailing_zeros() as u8);
             captures &= captures - 1;
 
-            let mut attacks = BLACK_PAWN_ATTACKS[from as usize] & self.color_occ[0];
+            let mut attacks = BLACK_PAWN_ATTACKS[from.as_usize()] & self.color_occ[0];
 
             while attacks != 0 {
-                let to = attacks.trailing_zeros() as u8;
+                let to = Square::from(attacks.trailing_zeros() as u8);
                 attacks &= attacks - 1;
 
-                let is_promotion = to < 8;
+                let is_promotion = to.as_u8() < 8;
                 let captured_piece = self.piece_at(to);
-                let is_pinned = (pinned >> from) & 1 != 0;
+                let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
                 let is_legal = if is_pinned {
-                    (1u64 << to) & pin_rays[from as usize] & capture_mask != 0
+                    (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & capture_mask != 0
                 } else {
-                    (capture_mask >> to) & 1 != 0
+                    (capture_mask >> to.as_u8()) & 1 != 0
                 };
                 if is_legal {
                     if is_promotion {
@@ -384,20 +387,23 @@ impl Board {
         }
 
         // En passant
-        if self.en_passant < 64 {
-            let en_passant_mask = 1 << self.en_passant;
+        if self.en_passant.as_u8() < 64 {
+            let en_passant_mask = 1 << self.en_passant.as_u8();
             let mut left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
             while left_en_passant != 0 {
-                let to = left_en_passant.trailing_zeros() as u8;
+                let to = Square::from(left_en_passant.trailing_zeros() as u8);
                 left_en_passant &= left_en_passant - 1;
-                let from = to + 7;
-                let captured_sq = to + 8;
-                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let from = Square::from(to.as_u8() + 7);
+                let captured_sq = Square::from(to.as_u8() + 8);
+                let changed_occ = self.occ
+                    ^ (1u64 << from.as_u8())
+                    ^ (1u64 << captured_sq.as_u8())
+                    ^ (1u64 << to.as_u8());
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq;
-                changed_pieces[Piece::BP as usize] ^= (1u64 << to) | (1u64 << from);
+                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq.as_u8();
+                changed_pieces[Piece::BP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
                 let checkers = self.compute_checkers(
-                    self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+                    Square::from(self.pieces[Piece::BK as usize].trailing_zeros() as u8),
                     changed_occ,
                     Color::White,
                     &changed_pieces,
@@ -415,16 +421,19 @@ impl Board {
             }
             let mut right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
             while right_en_passant != 0 {
-                let to = right_en_passant.trailing_zeros() as u8;
+                let to = Square::from(right_en_passant.trailing_zeros() as u8);
                 right_en_passant &= right_en_passant - 1;
-                let from = to + 9;
-                let captured_sq = to + 8;
-                let changed_occ = self.occ ^ (1u64 << from) ^ (1u64 << captured_sq) ^ (1u64 << to);
+                let from = Square::from(to.as_u8() + 9);
+                let captured_sq = Square::from(to.as_u8() + 8);
+                let changed_occ = self.occ
+                    ^ (1u64 << from.as_u8())
+                    ^ (1u64 << captured_sq.as_u8())
+                    ^ (1u64 << to.as_u8());
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq;
-                changed_pieces[Piece::BP as usize] ^= (1u64 << to) | (1u64 << from);
+                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq.as_u8();
+                changed_pieces[Piece::BP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
                 let checkers = self.compute_checkers(
-                    self.pieces[Piece::BK as usize].trailing_zeros() as u8,
+                    Square::from(self.pieces[Piece::BK as usize].trailing_zeros() as u8),
                     changed_occ,
                     Color::White,
                     &changed_pieces,
@@ -454,15 +463,15 @@ impl Board {
         let us = self.side_to_move;
         let mut knights = self.pieces[knight_piece as usize] & !pinned;
         while knights != 0 {
-            let from = knights.trailing_zeros() as u8;
+            let from = Square::from(knights.trailing_zeros() as u8);
             knights &= knights - 1;
 
-            let mut attacks = KNIGHT_ATTACKS[from as usize]
+            let mut attacks = KNIGHT_ATTACKS[from.as_usize()]
                 & !self.color_occ[us as usize]
                 & (block_mask | capture_mask);
 
             while attacks != 0 {
-                let to = attacks.trailing_zeros() as u8;
+                let to = Square::from(attacks.trailing_zeros() as u8);
                 attacks &= attacks - 1;
 
                 let captured_piece = self.piece_at(to);
@@ -496,25 +505,27 @@ impl Board {
         let us = self.side_to_move;
         let mut rooks = self.pieces[rook_piece as usize];
         while rooks != 0 {
-            let from = rooks.trailing_zeros() as u8;
+            let from = Square::from(rooks.trailing_zeros() as u8);
             rooks &= rooks - 1;
 
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
 
-            let mask = ROOK_MASKS[from as usize];
+            let mask = ROOK_MASKS[from.as_usize()];
             let blockers = self.occ & mask;
-            let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from as usize])
-                >> ROOK_SHIFTS[from as usize]) as usize;
+            let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
+                >> ROOK_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[us as usize] & (block_mask | capture_mask) & pin_rays[from as usize]
+                !self.color_occ[us as usize]
+                    & (block_mask | capture_mask)
+                    & pin_rays[from.as_usize()]
             } else {
                 !self.color_occ[us as usize] & (block_mask | capture_mask)
             };
-            let attacks = ROOK_ATTACKS[from as usize][idx] & legal_mask;
+            let attacks = ROOK_ATTACKS[from.as_usize()][idx] & legal_mask;
 
             let mut remaining = attacks;
             while remaining != 0 {
-                let to = remaining.trailing_zeros() as u8;
+                let to = Square::from(remaining.trailing_zeros() as u8);
                 remaining &= remaining - 1;
 
                 let captured_piece = self.piece_at(to);
@@ -547,25 +558,27 @@ impl Board {
         let us = self.side_to_move;
         let mut bishops = self.pieces[bishop_piece as usize];
         while bishops != 0 {
-            let from = bishops.trailing_zeros() as u8;
+            let from = Square::from(bishops.trailing_zeros() as u8);
             bishops &= bishops - 1;
 
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
 
-            let mask = BISHOP_MASKS[from as usize];
+            let mask = BISHOP_MASKS[from.as_usize()];
             let blockers = self.occ & mask;
-            let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from as usize])
-                >> BISHOP_SHIFTS[from as usize]) as usize;
+            let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
+                >> BISHOP_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[us as usize] & (block_mask | capture_mask) & pin_rays[from as usize]
+                !self.color_occ[us as usize]
+                    & (block_mask | capture_mask)
+                    & pin_rays[from.as_usize()]
             } else {
                 !self.color_occ[us as usize] & (block_mask | capture_mask)
             };
-            let attacks = BISHOP_ATTACKS[from as usize][idx] & legal_mask;
+            let attacks = BISHOP_ATTACKS[from.as_usize()][idx] & legal_mask;
 
             let mut remaining = attacks;
             while remaining != 0 {
-                let to = remaining.trailing_zeros() as u8;
+                let to = Square::from(remaining.trailing_zeros() as u8);
                 remaining &= remaining - 1;
 
                 let captured_piece = self.piece_at(to);
@@ -598,25 +611,27 @@ impl Board {
         let us = self.side_to_move;
         let mut queens = self.pieces[queen_piece as usize];
         while queens != 0 {
-            let from = queens.trailing_zeros() as u8;
+            let from = Square::from(queens.trailing_zeros() as u8);
             queens &= queens - 1;
 
-            let is_pinned = (pinned >> from) & 1 != 0;
+            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
 
-            let orth_mask = ROOK_MASKS[from as usize];
+            let orth_mask = ROOK_MASKS[from.as_usize()];
             let orth_blockers = self.occ & orth_mask;
-            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from as usize])
-                >> ROOK_SHIFTS[from as usize]) as usize;
-            let orth_attacks = ROOK_ATTACKS[from as usize][orth_idx];
+            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
+                >> ROOK_SHIFTS[from.as_usize()]) as usize;
+            let orth_attacks = ROOK_ATTACKS[from.as_usize()][orth_idx];
 
-            let diag_mask = BISHOP_MASKS[from as usize];
+            let diag_mask = BISHOP_MASKS[from.as_usize()];
             let diag_blockers = self.occ & diag_mask;
-            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from as usize])
-                >> BISHOP_SHIFTS[from as usize]) as usize;
-            let diag_attacks = BISHOP_ATTACKS[from as usize][diag_idx];
+            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
+                >> BISHOP_SHIFTS[from.as_usize()]) as usize;
+            let diag_attacks = BISHOP_ATTACKS[from.as_usize()][diag_idx];
 
             let legal_mask = if is_pinned {
-                !self.color_occ[us as usize] & (block_mask | capture_mask) & pin_rays[from as usize]
+                !self.color_occ[us as usize]
+                    & (block_mask | capture_mask)
+                    & pin_rays[from.as_usize()]
             } else {
                 !self.color_occ[us as usize] & (block_mask | capture_mask)
             };
@@ -625,7 +640,7 @@ impl Board {
 
             let mut remaining = attacks;
             while remaining != 0 {
-                let to = remaining.trailing_zeros() as u8;
+                let to = Square::from(remaining.trailing_zeros() as u8);
                 remaining &= remaining - 1;
 
                 let captured_piece = self.piece_at(to);
@@ -646,7 +661,7 @@ impl Board {
         }
     }
 
-    fn compute_danger(&self, king_sq: u8) -> u64 {
+    fn compute_danger(&self, king_sq: Square) -> u64 {
         let mut danger = 0;
         let (
             mut pawns,
@@ -673,7 +688,7 @@ impl Board {
                 self.pieces[Piece::WK as usize],
             ),
         };
-        let kingless_occ = self.occ & !(1u64 << king_sq);
+        let kingless_occ = self.occ & !(1u64 << king_sq.as_u8());
         while pawns != 0 {
             let sq = pawns.trailing_zeros() as u8;
             pawns &= pawns - 1;
@@ -707,12 +722,12 @@ impl Board {
         danger
     }
 
-    fn get_king_moves(&self, moves: &mut Vec<Move>, king_sq: u8, danger_mask: u64) {
+    fn get_king_moves(&self, moves: &mut Vec<Move>, king_sq: Square, danger_mask: u64) {
         let us = self.side_to_move;
         let mut attacks =
-            KING_ATTACKS[king_sq as usize] & !self.color_occ[us as usize] & !danger_mask;
+            KING_ATTACKS[king_sq.as_usize()] & !self.color_occ[us as usize] & !danger_mask;
         while attacks != 0 {
-            let to = attacks.trailing_zeros() as u8;
+            let to = Square::from(attacks.trailing_zeros() as u8);
             attacks &= attacks - 1;
 
             let captured_piece = self.piece_at(to);
@@ -739,7 +754,7 @@ impl Board {
 
     pub fn compute_checkers(
         &self,
-        king_sq: u8,
+        king_sq: Square,
         occ: u64,
         attacker_color: Color,
         pieces: &[u64; 12],
@@ -761,30 +776,30 @@ impl Board {
                 pieces[Piece::WB as usize] | pieces[Piece::WQ as usize],
             ),
         };
-        let pawn_attacks = pawn_attack_table[king_sq as usize];
+        let pawn_attacks = pawn_attack_table[king_sq.as_usize()];
         checkers |= pawn_attacks & pawns;
 
-        let knight_attacks = KNIGHT_ATTACKS[king_sq as usize];
+        let knight_attacks = KNIGHT_ATTACKS[king_sq.as_usize()];
         checkers |= knight_attacks & knights;
 
-        let diag_mask = BISHOP_MASKS[king_sq as usize];
+        let diag_mask = BISHOP_MASKS[king_sq.as_usize()];
         let diag_blockers = diag_mask & occ;
-        let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[king_sq as usize])
-            >> BISHOP_SHIFTS[king_sq as usize]) as usize;
-        let diag_attacks = BISHOP_ATTACKS[king_sq as usize][diag_idx];
+        let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[king_sq.as_usize()])
+            >> BISHOP_SHIFTS[king_sq.as_usize()]) as usize;
+        let diag_attacks = BISHOP_ATTACKS[king_sq.as_usize()][diag_idx];
         checkers |= diag_attacks & diag_pieces;
 
-        let orth_mask = ROOK_MASKS[king_sq as usize];
+        let orth_mask = ROOK_MASKS[king_sq.as_usize()];
         let orth_blockers = orth_mask & occ;
-        let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[king_sq as usize])
-            >> ROOK_SHIFTS[king_sq as usize]) as usize;
-        let orth_attacks = ROOK_ATTACKS[king_sq as usize][orth_idx];
+        let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[king_sq.as_usize()])
+            >> ROOK_SHIFTS[king_sq.as_usize()]) as usize;
+        let orth_attacks = ROOK_ATTACKS[king_sq.as_usize()][orth_idx];
         checkers |= orth_attacks & orth_pieces;
 
         checkers
     }
 
-    fn compute_pins(&self, king_sq: u8) -> (u64, [u64; 64]) {
+    fn compute_pins(&self, king_sq: Square) -> (u64, [u64; 64]) {
         let mut pinned = 0;
         let mut pin_rays = [0; 64];
 
@@ -799,8 +814,8 @@ impl Board {
             ),
         };
 
-        let potential_diag_attackers = BISHOP_ATTACKS[king_sq as usize][0] & diag_pieces;
-        let potential_orth_attackers = ROOK_ATTACKS[king_sq as usize][0] & orth_pieces;
+        let potential_diag_attackers = BISHOP_ATTACKS[king_sq.as_usize()][0] & diag_pieces;
+        let potential_orth_attackers = ROOK_ATTACKS[king_sq.as_usize()][0] & orth_pieces;
 
         let mut attackers = potential_diag_attackers | potential_orth_attackers;
 
@@ -808,7 +823,7 @@ impl Board {
             let attacker_sq = attackers.trailing_zeros() as usize;
             attackers &= attackers - 1;
 
-            let between = BETWEEN[king_sq as usize][attacker_sq];
+            let between = BETWEEN[king_sq.as_usize()][attacker_sq];
             let blockers = between & self.occ;
             let our_blockers = between & self.color_occ[self.side_to_move as usize];
 
@@ -822,14 +837,14 @@ impl Board {
         (pinned, pin_rays)
     }
 
-    fn compute_block_mask(&self, king_sq: u8, checkers: u64) -> u64 {
-        let checker_sq = checkers.trailing_zeros();
-        let checker_piece = self.piece_at(checker_sq as u8);
+    fn compute_block_mask(&self, king_sq: Square, checkers: u64) -> u64 {
+        let checker_sq = Square::from(checkers.trailing_zeros() as u8);
+        let checker_piece = self.piece_at(checker_sq);
 
         match checker_piece {
             Piece::BN | Piece::WN | Piece::BP | Piece::WP => 0,
             Piece::BR | Piece::WR | Piece::BB | Piece::WB | Piece::BQ | Piece::WQ => {
-                BETWEEN[king_sq as usize][checker_sq as usize]
+                BETWEEN[king_sq.as_usize()][checker_sq.as_usize()]
             }
             _ => 0,
         }
@@ -844,8 +859,8 @@ impl Board {
                     && king_danger_squares & ((1u64 << 4) | (1u64 << 5) | (1u64 << 6)) == 0
                 {
                     moves.push(Move::new(
-                        4,
-                        6,
+                        Square::from(4),
+                        Square::from(6),
                         Piece::WK,
                         Piece::None,
                         Piece::None,
@@ -857,8 +872,8 @@ impl Board {
                     && king_danger_squares & ((1u64 << 4) | (1u64 << 3) | (1u64 << 2)) == 0
                 {
                     moves.push(Move::new(
-                        4,
-                        2,
+                        Square::from(4),
+                        Square::from(2),
                         Piece::WK,
                         Piece::None,
                         Piece::None,
@@ -872,8 +887,8 @@ impl Board {
                     && king_danger_squares & ((1u64 << 60) | (1u64 << 61) | (1u64 << 62)) == 0
                 {
                     moves.push(Move::new(
-                        60,
-                        62,
+                        Square::from(60),
+                        Square::from(62),
                         Piece::BK,
                         Piece::None,
                         Piece::None,
@@ -885,8 +900,8 @@ impl Board {
                     && king_danger_squares & ((1u64 << 60) | (1u64 << 59) | (1u64 << 58)) == 0
                 {
                     moves.push(Move::new(
-                        60,
-                        58,
+                        Square::from(60),
+                        Square::from(58),
                         Piece::BK,
                         Piece::None,
                         Piece::None,
@@ -969,13 +984,15 @@ impl Board {
         moves.clear();
         let us = self.side_to_move;
 
-        let king_sq = self.pieces[if us == Color::White {
-            Piece::WK
-        } else {
-            Piece::BK
-        } as usize]
-            .trailing_zeros() as u8;
-        debug_assert!(king_sq <= 64);
+        let king_sq = Square::from(
+            self.pieces[if us == Color::White {
+                Piece::WK
+            } else {
+                Piece::BK
+            } as usize]
+                .trailing_zeros() as u8,
+        );
+        debug_assert!(king_sq.as_u8() <= 64);
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 

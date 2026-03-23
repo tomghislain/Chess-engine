@@ -3,7 +3,7 @@ mod engine;
 mod gui;
 
 use crate::ai::{mcts, negamax};
-use crate::engine::{Board, Color};
+use crate::engine::{Board, Color, Square};
 use std::env;
 
 #[derive(Clone, Copy)]
@@ -74,7 +74,7 @@ fn run_game(
     show_gui: bool,
 ) -> Result<Option<Color>, Box<dyn std::error::Error>> {
     let mut board = Board::new();
-    let mut last_move_squares = None;
+    let mut last_move_squares: Option<(Square, Square)> = None;
     let mut moves = Vec::with_capacity(218);
 
     loop {
