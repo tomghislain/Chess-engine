@@ -1,4 +1,4 @@
-use crate::engine::{Board, Move};
+use crate::engine::{Board, Move, MoveList};
 use std::collections::HashMap;
 
 enum TTFlag {
@@ -49,18 +49,18 @@ fn negamax(
         return evaluate(board);
     }
 
-    let mut moves = Vec::with_capacity(218);
+    let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
-    if moves.is_empty() {
+    if moves.count == 0 {
         return evaluate(board);
     }
 
     let mut best_score = i8::MIN;
 
-    for mv in moves {
-        board.make_move(mv);
+    for mv in moves.iter() {
+        board.make_move(*mv);
         let score = -negamax(board, depth - 1, -beta, -alpha, tt);
-        board.unmake_move(mv);
+        board.unmake_move(*mv);
 
         if score > best_score {
             best_score = score;
@@ -92,9 +92,9 @@ fn negamax(
 }
 
 pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
-    let mut moves = Vec::with_capacity(218);
+    let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
-    if board.is_draw() || moves.is_empty() {
+    if board.is_draw() || moves.count == 0 {
         return None;
     }
     let mut tt = TranspositionTable::new();
@@ -103,10 +103,10 @@ pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
     let mut best_score = i8::MIN;
     let mut best_move = None;
 
-    for mv in moves {
-        board.make_move(mv);
+    for mv in moves.iter() {
+        board.make_move(*mv);
         let score = -negamax(board, depth, alpha, beta, &mut tt);
-        board.unmake_move(mv);
+        board.unmake_move(*mv);
 
         if score > best_score {
             best_score = score;
@@ -114,5 +114,5 @@ pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
         }
     }
 
-    best_move
+    best_move.copied()
 }

@@ -123,3 +123,58 @@ impl From<u8> for Square {
         Square(v)
     }
 }
+
+#[derive(Clone)]
+pub struct MoveList {
+    moves: [Move; 218],
+    pub count: usize,
+}
+
+impl FromIterator<Move> for MoveList {
+    fn from_iter<T: IntoIterator<Item = Move>>(iter: T) -> Self {
+        let mut list = MoveList::new();
+        for mv in iter {
+            if list.count < 218 {
+                list.push(mv);
+            } else {
+                break;
+            }
+        }
+        list
+    }
+}
+
+impl MoveList {
+    pub fn new() -> Self {
+        MoveList {
+            moves: [Move::new(Square::from(0), Square::from(0), Piece::None, 0); 218],
+            count: 0,
+        }
+    }
+    pub fn get(&self, index: usize) -> Option<Move> {
+        if index < self.count {
+            Some(self.moves[index])
+        } else {
+            None
+        }
+    }
+    pub fn push(&mut self, mv: Move) {
+        self.moves[self.count] = mv;
+        self.count += 1;
+    }
+    pub fn clear(&mut self) {
+        self.count = 0;
+    }
+    pub fn swap_pop(&mut self, index: usize) -> Option<Move> {
+        if index >= self.count {
+            return None;
+        }
+        let tmp = self.moves[index];
+        self.moves[index] = self.moves[self.count - 1];
+        self.count -= 1;
+        Some(tmp)
+    }
+    pub fn iter(&self) -> std::slice::Iter<'_, Move> {
+        self.moves[..self.count].iter()
+    }
+}

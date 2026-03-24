@@ -1,14 +1,11 @@
 use crate::engine::bitboards::*;
 use crate::engine::board::{BK_CASTLE, BQ_CASTLE, WK_CASTLE, WQ_CASTLE};
-use crate::engine::types::{
-    CAPTURE_FLAG, CASTLING_FLAG, Color, DOUBLE_PAWN_PUSH_FLAG, EN_PASSANT_FLAG, PROMOTION_FLAG,
-    Square,
-};
+use crate::engine::types::*;
 use crate::engine::{Board, Move, Piece};
 impl Board {
     fn get_white_pawn_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         block_mask: u64,
         capture_mask: u64,
         pinned: u64,
@@ -176,7 +173,7 @@ impl Board {
 
     fn get_black_pawn_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         block_mask: u64,
         capture_mask: u64,
         pinned: u64,
@@ -344,7 +341,7 @@ impl Board {
 
     fn get_knight_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         knight_piece: Piece,
         block_mask: u64,
         capture_mask: u64,
@@ -377,7 +374,7 @@ impl Board {
 
     fn get_rook_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         rook_piece: Piece,
         block_mask: u64,
         capture_mask: u64,
@@ -422,7 +419,7 @@ impl Board {
 
     fn get_bishop_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         bishop_piece: Piece,
         block_mask: u64,
         capture_mask: u64,
@@ -467,7 +464,7 @@ impl Board {
 
     fn get_queen_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         queen_piece: Piece,
         block_mask: u64,
         capture_mask: u64,
@@ -580,7 +577,7 @@ impl Board {
         danger
     }
 
-    fn get_king_moves(&self, moves: &mut Vec<Move>, king_sq: Square, danger_mask: u64) {
+    fn get_king_moves(&self, moves: &mut MoveList, king_sq: Square, danger_mask: u64) {
         let us = self.side_to_move;
         let mut attacks =
             KING_ATTACKS[king_sq.as_usize()] & !self.color_occ[us as usize] & !danger_mask;
@@ -696,7 +693,7 @@ impl Board {
         }
     }
 
-    fn gen_castling_moves(&self, moves: &mut Vec<Move>, king_danger_squares: u64) {
+    fn gen_castling_moves(&self, moves: &mut MoveList, king_danger_squares: u64) {
         let castling_rights = self.castling;
         match self.side_to_move {
             Color::White => {
@@ -752,7 +749,7 @@ impl Board {
 
     fn get_non_king_moves(
         &self,
-        moves: &mut Vec<Move>,
+        moves: &mut MoveList,
         block_mask: u64,
         capture_mask: u64,
         pinned: u64,
@@ -818,7 +815,7 @@ impl Board {
         }
     }
 
-    pub fn get_legal_moves(&self, moves: &mut Vec<Move>) {
+    pub fn get_legal_moves(&self, moves: &mut MoveList) {
         moves.clear();
         let us = self.side_to_move;
 

@@ -7,5 +7,6 @@ pub mod zobrist;
 pub use board::Board;
 pub use types::Color;
 pub use types::Move;
+pub use types::MoveList;
 pub use types::Piece;
 pub use types::Square;

@@ -1,4 +1,4 @@
-use crate::engine::{Board, Move, Piece, Square, types};
+use crate::engine::{Board, Move, MoveList, Piece, Square, types};
 use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 
@@ -126,9 +126,9 @@ pub fn get_player_move(
     board: &mut Board,
     previous_move_squares: Option<(Square, Square)>,
 ) -> Option<Move> {
-    let mut moves = Vec::with_capacity(218);
+    let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
-    if moves.is_empty() || board.is_draw() {
+    if moves.count == 0 || board.is_draw() {
         return None;
     };
     let mut stdout = std::io::stdout();

@@ -3,7 +3,7 @@ mod engine;
 mod gui;
 
 use crate::ai::{mcts, negamax};
-use crate::engine::{Board, Color, Square};
+use crate::engine::{Board, Color, MoveList, Square};
 use std::env;
 
 #[derive(Clone, Copy)]
@@ -75,7 +75,7 @@ fn run_game(
 ) -> Result<Option<Color>, Box<dyn std::error::Error>> {
     let mut board = Board::new();
     let mut last_move_squares: Option<(Square, Square)> = None;
-    let mut moves = Vec::with_capacity(218);
+    let mut moves = MoveList::new();
 
     loop {
         if show_gui {
@@ -109,7 +109,7 @@ fn run_game(
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
             board.get_legal_moves(&mut moves);
-            let result = if moves.is_empty() {
+            let result = if moves.count == 0 {
                 board.is_king_checked()
             } else {
                 false

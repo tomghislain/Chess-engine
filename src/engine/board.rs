@@ -1,7 +1,4 @@
-use crate::engine::types::{
-    CAPTURE_FLAG, CASTLING_FLAG, Color, DOUBLE_PAWN_PUSH_FLAG, EN_PASSANT_FLAG, Move,
-    PROMOTION_FLAG, Piece,
-};
+use crate::engine::types::*;
 use crate::engine::{Square, zobrist};
 pub const WK_CASTLE: u8 = 1 << 0;
 pub const WQ_CASTLE: u8 = 1 << 1;
@@ -598,21 +595,21 @@ impl Board {
         self.is_50_move_draw() || self.is_threefold_repetition() || self.is_insufficient_material()
     }
     pub fn perft(&mut self, depth: u8) -> u64 {
-        let mut moves = Vec::with_capacity(218);
+        let mut moves = MoveList::new();
         self.get_legal_moves(&mut moves);
         if depth == 0 {
             return 1;
         } else if depth == 1 {
-            return moves.len() as u64;
+            return moves.count as u64;
         }
 
         let mut nodes = 0;
 
-        for mv in moves {
+        for mv in moves.iter() {
             // println!("Making move at depth {}: {:?}", depth, m);
-            self.make_move(mv);
+            self.make_move(*mv);
             nodes += self.perft(depth - 1);
-            self.unmake_move(mv);
+            self.unmake_move(*mv);
             // println!("Unmaking move at depth {}: {:?}", depth, m);
         }
         nodes

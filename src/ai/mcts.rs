@@ -1,15 +1,15 @@
-use crate::engine::{Board, Move};
-use rand::{RngExt, seq::SliceRandom};
+use crate::engine::{Board, Move, MoveList};
+use rand::RngExt;
 
 pub fn get_random_move(board: &mut Board) -> Option<Move> {
-    let mut moves = Vec::with_capacity(218);
+    let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
-    if moves.is_empty() || board.is_draw() {
+    if moves.count == 0 || board.is_draw() {
         return None;
     };
     let mut rng = rand::rng();
-    let index = rng.random_range(0..moves.len());
-    Some(moves[index])
+    let index = rng.random_range(0..moves.count);
+    moves.get(index)
 }
 
 type NodeIndex = usize;
@@ -17,7 +17,7 @@ type NodeIndex = usize;
 struct Node {
     parent: Option<NodeIndex>,
     children: Vec<NodeIndex>,
-    untried_moves: Vec<Move>,
+    untried_moves: MoveList,
     visits: u32,
     wins: f32,
     move_from_parent: Option<Move>,
@@ -25,12 +25,10 @@ struct Node {
 
 impl Node {
     fn new(board: &Board, parent: NodeIndex, parent_move: Move) -> Self {
-        let mut moves = Vec::with_capacity(218);
+        let mut moves = MoveList::new();
         if !board.is_draw() {
             board.get_legal_moves(&mut moves);
         }
-        let mut rng = rand::rng();
-        moves.shuffle(&mut rng);
         Node {
             parent: Some(parent),
             children: Vec::new(),
@@ -48,10 +46,8 @@ struct Tree {
 
 impl Tree {
     fn new(board: &mut Board) -> Self {
-        let mut moves = Vec::with_capacity(218);
+        let mut moves = MoveList::new();
         board.get_legal_moves(&mut moves);
-        let mut rng = rand::rng();
-        moves.shuffle(&mut rng);
         Tree {
             nodes: vec![Node {
                 parent: None,
@@ -92,7 +88,7 @@ impl Tree {
 
     fn select(&self, board: &mut Board) -> NodeIndex {
         let mut current: NodeIndex = 0; // Start at root
-        while self.nodes[current].untried_moves.is_empty()
+        while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
         {
             if let Some(best_child_index) = self.best_ucb_child(current) {
@@ -106,7 +102,9 @@ impl Tree {
     }
 
     fn expand(&mut self, board: &mut Board, node: NodeIndex) -> NodeIndex {
-        if let Some(untried_move) = self.nodes[node].untried_moves.pop() {
+        let mut rng = rand::rng();
+        let index = rng.random_range(0..self.nodes[node].untried_moves.count);
+        if let Some(untried_move) = self.nodes[node].untried_moves.swap_pop(index) {
             board.make_move(untried_move);
             let child_idx = self.nodes.len();
             self.nodes.push(Node::new(board, node, untried_move));
@@ -120,10 +118,10 @@ impl Tree {
     fn rollout(&self, board: &mut Board) -> f32 {
         let starting_player = board.side_to_move;
         let mut rng = rand::rng();
-        let mut moves = Vec::with_capacity(218);
+        let mut moves = MoveList::new();
         while !board.is_draw() {
             board.get_legal_moves(&mut moves);
-            let num_moves = moves.len();
+            let num_moves = moves.count;
             if num_moves == 0 {
                 if board.is_king_checked() {
                     if board.side_to_move != starting_player {
@@ -135,7 +133,7 @@ impl Tree {
                     return 0.5; // Stalemate
                 }
             }
-            let mv = moves[rng.random_range(0..num_moves)];
+            let mv = moves.get(rng.random_range(0..num_moves)).unwrap();
             board.make_move(mv);
         }
         0.5 // Draw
@@ -154,9 +152,9 @@ impl Tree {
 }
 
 pub fn mcts_search(board: &mut Board, iteration_number: usize) -> Option<Move> {
-    let mut moves = Vec::with_capacity(218);
+    let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
-    if board.is_draw() || moves.is_empty() {
+    if board.is_draw() || moves.count == 0 {
         return None;
     }
 
