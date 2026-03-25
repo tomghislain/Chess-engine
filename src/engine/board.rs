@@ -130,18 +130,7 @@ impl Board {
         }
 
         // Castling rights
-        if self.castling & WK_CASTLE != 0 {
-            hash ^= z.castling[0];
-        }
-        if self.castling & WQ_CASTLE != 0 {
-            hash ^= z.castling[1];
-        }
-        if self.castling & BK_CASTLE != 0 {
-            hash ^= z.castling[2];
-        }
-        if self.castling & BQ_CASTLE != 0 {
-            hash ^= z.castling[3];
-        }
+        hash ^= z.castling[self.castling as usize];
 
         // En passant
         if self.en_passant.as_u8() < 64 {

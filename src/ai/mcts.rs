@@ -102,6 +102,9 @@ impl Tree {
     }
 
     fn expand(&mut self, board: &mut Board, node: NodeIndex, rng: &mut SmallRng) -> NodeIndex {
+        if self.nodes[node].untried_moves.count == 0 {
+            return node;
+        }
         let index = rng.random_range(0..self.nodes[node].untried_moves.count);
         if let Some(untried_move) = self.nodes[node].untried_moves.swap_pop(index) {
             board.make_move(untried_move);
