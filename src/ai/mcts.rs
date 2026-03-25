@@ -115,13 +115,12 @@ impl Tree {
         }
     }
 
-    fn rollout(&self, board: &mut Board) -> f32 {
+    fn rollout(&self, board: &mut Board, move_buffer: &mut MoveList) -> f32 {
         let starting_player = board.side_to_move;
         let mut rng = rand::rng();
-        let mut moves = MoveList::new();
         while !board.is_draw() {
-            board.get_legal_moves(&mut moves);
-            let num_moves = moves.count;
+            board.get_legal_moves(move_buffer);
+            let num_moves = move_buffer.count;
             if num_moves == 0 {
                 if board.is_king_checked() {
                     if board.side_to_move != starting_player {
@@ -133,7 +132,7 @@ impl Tree {
                     return 0.5; // Stalemate
                 }
             }
-            let mv = moves.get(rng.random_range(0..num_moves)).unwrap();
+            let mv = move_buffer.get(rng.random_range(0..num_moves)).unwrap();
             board.make_move(mv);
         }
         0.5 // Draw
@@ -166,7 +165,7 @@ pub fn mcts_search(board: &mut Board, iteration_number: usize) -> Option<Move> {
         iteration_board = board.clone();
         let selected_node = tree.select(&mut iteration_board);
         let new_node = tree.expand(&mut iteration_board, selected_node);
-        let score = tree.rollout(&mut iteration_board);
+        let score = tree.rollout(&mut iteration_board, &mut moves);
         tree.backpropagate(new_node, score);
     }
 
