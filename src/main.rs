@@ -4,6 +4,7 @@ mod gui;
 
 use crate::ai::{mcts, negamax};
 use crate::engine::{Board, Color, MoveList, Square};
+use rand::rngs::SmallRng;
 use std::env;
 
 #[derive(Clone, Copy)]
@@ -44,8 +45,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     } else if env::args().any(|arg| arg == "--mcts") {
         let mut board = Board::new();
+        let mut rng: SmallRng = rand::make_rng();
         let iterations = 100_000;
-        mcts::mcts_search(&mut board, iterations);
+        mcts::mcts_search(&mut board, iterations, &mut rng);
         Ok(())
     } else {
         ask_action()
@@ -81,6 +83,7 @@ fn run_game(
     let mut board = Board::new();
     let mut last_move_squares: Option<(Square, Square)> = None;
     let mut moves = MoveList::new();
+    let mut rng: SmallRng = rand::make_rng();
 
     loop {
         if show_gui {
@@ -100,9 +103,9 @@ fn run_game(
                 }
                 gui::get_player_move(&mut board, last_move_squares)
             }
-            PlayerType::RandomMove => mcts::get_random_move(&mut board),
+            PlayerType::RandomMove => mcts::get_random_move(&mut board, &mut rng),
             PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
-            PlayerType::Mcts { iterations } => mcts::mcts_search(&mut board, iterations),
+            PlayerType::Mcts { iterations } => mcts::mcts_search(&mut board, iterations, &mut rng),
         };
 
         if let Some(mv) = mv_result {

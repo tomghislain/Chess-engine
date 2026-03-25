@@ -1,13 +1,13 @@
 use crate::engine::{Board, Move, MoveList};
 use rand::RngExt;
+use rand::rngs::SmallRng;
 
-pub fn get_random_move(board: &mut Board) -> Option<Move> {
+pub fn get_random_move(board: &mut Board, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
     if moves.count == 0 || board.is_draw() {
         return None;
     };
-    let mut rng = rand::rng();
     let index = rng.random_range(0..moves.count);
     moves.get(index)
 }
@@ -101,8 +101,7 @@ impl Tree {
         current
     }
 
-    fn expand(&mut self, board: &mut Board, node: NodeIndex) -> NodeIndex {
-        let mut rng = rand::rng();
+    fn expand(&mut self, board: &mut Board, node: NodeIndex, rng: &mut SmallRng) -> NodeIndex {
         let index = rng.random_range(0..self.nodes[node].untried_moves.count);
         if let Some(untried_move) = self.nodes[node].untried_moves.swap_pop(index) {
             board.make_move(untried_move);
@@ -115,9 +114,8 @@ impl Tree {
         }
     }
 
-    fn rollout(&self, board: &mut Board, move_buffer: &mut MoveList) -> f32 {
+    fn rollout(&self, board: &mut Board, move_buffer: &mut MoveList, rng: &mut SmallRng) -> f32 {
         let starting_player = board.side_to_move;
-        let mut rng = rand::rng();
         while !board.is_draw() {
             board.get_legal_moves(move_buffer);
             let num_moves = move_buffer.count;
@@ -150,7 +148,7 @@ impl Tree {
     }
 }
 
-pub fn mcts_search(board: &mut Board, iteration_number: usize) -> Option<Move> {
+pub fn mcts_search(board: &mut Board, iteration_number: usize, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
     if board.is_draw() || moves.count == 0 {
@@ -164,8 +162,8 @@ pub fn mcts_search(board: &mut Board, iteration_number: usize) -> Option<Move> {
     for _ in 0..iteration_number {
         iteration_board = board.clone();
         let selected_node = tree.select(&mut iteration_board);
-        let new_node = tree.expand(&mut iteration_board, selected_node);
-        let score = tree.rollout(&mut iteration_board, &mut moves);
+        let new_node = tree.expand(&mut iteration_board, selected_node, rng);
+        let score = tree.rollout(&mut iteration_board, &mut moves, rng);
         tree.backpropagate(new_node, score);
     }
 
