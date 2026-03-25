@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 pub struct Zobrist {
     pub piece_square: [[u64; 64]; 12],
     pub side: u64,
-    pub castling: [u64; 4],
+    pub castling: [u64; 16],
     pub en_passant: [u64; 8],
 }
 
@@ -19,8 +19,8 @@ fn init_zobrist() -> Zobrist {
         }
     }
     let side = rng.next_u64();
-    let mut castling = [0; 4];
-    for i in 0..4 {
+    let mut castling = [0; 16];
+    for i in 0..16 {
         castling[i] = rng.next_u64();
     }
     let mut en_passant = [0; 8];

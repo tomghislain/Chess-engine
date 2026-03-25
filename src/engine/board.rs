@@ -5,6 +5,73 @@ pub const WQ_CASTLE: u8 = 1 << 1;
 pub const BK_CASTLE: u8 = 1 << 2;
 pub const BQ_CASTLE: u8 = 1 << 3;
 
+const CASTLING_UPDATE: [u8; 64] = [
+    !WQ_CASTLE,
+    !0,
+    !0,
+    !0,
+    !(WQ_CASTLE | WK_CASTLE),
+    !0,
+    !0,
+    !WK_CASTLE,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !0,
+    !BQ_CASTLE,
+    !0,
+    !0,
+    !0,
+    !(BQ_CASTLE | BK_CASTLE),
+    !0,
+    !0,
+    !BK_CASTLE,
+];
+
 #[derive(Clone)]
 pub struct Undo {
     pub captured_piece: Piece,
@@ -351,80 +418,12 @@ impl Board {
         }
 
         // Update castling rights
-        let old_castling = self.castling;
-        if old_castling & WK_CASTLE != 0 {
-            hash ^= z.castling[0];
-        }
-        if old_castling & WQ_CASTLE != 0 {
-            hash ^= z.castling[1];
-        }
-        if old_castling & BK_CASTLE != 0 {
-            hash ^= z.castling[2];
-        }
-        if old_castling & BQ_CASTLE != 0 {
-            hash ^= z.castling[3];
-        }
+        hash ^= z.castling[self.castling as usize];
 
-        self.castling &= match moved_piece {
-            Piece::WK => !(WK_CASTLE | WQ_CASTLE),
-            Piece::BK => !(BK_CASTLE | BQ_CASTLE),
-            Piece::WR => {
-                if mv.from().as_u8() == 7 {
-                    !WK_CASTLE
-                } else if mv.from().as_u8() == 0 {
-                    !WQ_CASTLE
-                } else {
-                    !0
-                }
-            }
-            Piece::BR => {
-                if mv.from().as_u8() == 63 {
-                    !BK_CASTLE
-                } else if mv.from().as_u8() == 56 {
-                    !BQ_CASTLE
-                } else {
-                    !0
-                }
-            }
-            _ => !0,
-        };
+        self.castling &= CASTLING_UPDATE[mv.from().as_usize()];
+        self.castling &= CASTLING_UPDATE[mv.to().as_usize()];
 
-        if is_capture {
-            self.castling &= match captured_piece {
-                Piece::WR => {
-                    if mv.to().as_u8() == 7 {
-                        !WK_CASTLE
-                    } else if mv.to().as_u8() == 0 {
-                        !WQ_CASTLE
-                    } else {
-                        !0
-                    }
-                }
-                Piece::BR => {
-                    if mv.to().as_u8() == 63 {
-                        !BK_CASTLE
-                    } else if mv.to().as_u8() == 56 {
-                        !BQ_CASTLE
-                    } else {
-                        !0
-                    }
-                }
-                _ => !0,
-            };
-        }
-
-        if self.castling & WK_CASTLE != 0 {
-            hash ^= z.castling[0];
-        }
-        if self.castling & WQ_CASTLE != 0 {
-            hash ^= z.castling[1];
-        }
-        if self.castling & BK_CASTLE != 0 {
-            hash ^= z.castling[2];
-        }
-        if self.castling & BQ_CASTLE != 0 {
-            hash ^= z.castling[3];
-        }
+        hash ^= z.castling[self.castling as usize];
 
         // Update halfmove clock
         let is_pawn_move = is_double_pawn_push || matches!(moved_piece, Piece::WP | Piece::BP);
