@@ -1,31 +1,29 @@
 use crate::engine::bitboards::*;
-use crate::engine::board::{BK_CASTLE, BQ_CASTLE, WK_CASTLE, WQ_CASTLE};
+use crate::engine::board::*;
 use crate::engine::types::*;
-use crate::engine::{Board, Move, Piece};
+
 impl Board {
     fn get_white_pawn_moves(
         &self,
         moves: &mut MoveList,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
-        pin_rays: &[u64; 64],
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
+        pin_rays: &[Bitboard; 64],
     ) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
 
         // Single pushes
-        let mut single_push = (pawns << 8) & empty;
-        while single_push != 0 {
-            let to = Square::from(single_push.trailing_zeros() as u8);
-            single_push &= single_push - 1;
-            let from = Square::from(to.as_u8() - 8);
+        let single_push = (pawns << 8) & empty;
+        for to in single_push {
+            let from = Square(to.as_u8() - 8);
             let is_promotion = to.as_u8() > 55;
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
             let is_legal = if is_pinned {
-                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
+                !(Bitboard::from(to) & pin_rays[from.as_usize()] & block_mask).is_empty()
             } else {
-                (block_mask >> to.as_u8()) & 1 != 0
+                !(block_mask & Bitboard::from(to)).is_empty()
             };
             if is_legal {
                 if is_promotion {
@@ -41,16 +39,14 @@ impl Board {
 
         // Double pushes
         let first_push = ((pawns & RANK_2) << 8) & empty;
-        let mut double_push = (first_push << 8) & empty;
-        while double_push != 0 {
-            let to = Square::from(double_push.trailing_zeros() as u8);
-            double_push &= double_push - 1;
-            let from = Square::from(to.as_u8() - 16);
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+        let double_push = (first_push << 8) & empty;
+        for to in double_push {
+            let from = Square(to.as_u8() - 16);
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
             let is_legal = if is_pinned {
-                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
+                !((Bitboard::from(to)) & pin_rays[from.as_usize()] & block_mask).is_empty()
             } else {
-                (block_mask >> to.as_u8()) & 1 != 0
+                !(block_mask & Bitboard::from(to)).is_empty()
             };
             if is_legal {
                 moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG))
@@ -58,23 +54,17 @@ impl Board {
         }
 
         // Captures
-        let mut captures = pawns;
-        while captures != 0 {
-            let from = Square::from(captures.trailing_zeros() as u8);
-            captures &= captures - 1;
+        let captures = pawns;
+        for from in captures {
+            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()] & self.color_occ[1];
 
-            let mut attacks = WHITE_PAWN_ATTACKS[from.as_usize()] & self.color_occ[1];
-
-            while attacks != 0 {
-                let to = Square::from(attacks.trailing_zeros() as u8);
-                attacks &= attacks - 1;
-
+            for to in attacks {
                 let is_promotion = to.as_u8() > 55;
-                let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+                let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
                 let is_legal = if is_pinned {
-                    (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & capture_mask != 0
+                    !((Bitboard::from(to)) & pin_rays[from.as_usize()] & capture_mask).is_empty()
                 } else {
-                    (capture_mask >> to.as_u8()) & 1 != 0
+                    !(capture_mask & Bitboard::from(to)).is_empty()
                 };
                 if is_legal {
                     if is_promotion {
@@ -111,27 +101,25 @@ impl Board {
 
         // En passant
         if self.en_passant.as_u8() < 64 {
-            let en_passant_mask = 1 << self.en_passant.as_u8();
-            let mut left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
-            while left_en_passant != 0 {
-                let to = Square::from(left_en_passant.trailing_zeros() as u8);
-                left_en_passant &= left_en_passant - 1;
-                let from = Square::from(to.as_u8() - 7);
-                let captured_sq = to.as_u8() - 8;
+            let en_passant_mask = Bitboard::from(self.en_passant);
+            let left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
+            for to in left_en_passant {
+                let from = Square(to.as_u8() - 7);
+                let captured_sq = Square(to.as_u8() - 8);
                 let changed_occ = self.occ
-                    ^ (1u64 << from.as_u8())
-                    ^ (1u64 << captured_sq)
-                    ^ (1u64 << to.as_u8());
+                    ^ (Bitboard::from(from))
+                    ^ (Bitboard::from(captured_sq))
+                    ^ (Bitboard::from(to));
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq;
-                changed_pieces[Piece::WP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
+                changed_pieces[Piece::BP as usize] ^= Bitboard::from(captured_sq);
+                changed_pieces[Piece::WP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
                 let checkers = self.compute_checkers(
-                    Square::from(self.pieces[Piece::WK as usize].trailing_zeros() as u8),
+                    Square(self.pieces[Piece::WK as usize].trailing_zeros()),
                     changed_occ,
                     Color::Black,
                     &changed_pieces,
                 );
-                if checkers == 0 {
+                if checkers.is_empty() {
                     moves.push(Move::new(
                         from,
                         to,
@@ -140,26 +128,24 @@ impl Board {
                     ));
                 }
             }
-            let mut right_en_passant = ((pawns << 9) & !FILE_A) & en_passant_mask;
-            while right_en_passant != 0 {
-                let to = Square::from(right_en_passant.trailing_zeros() as u8);
-                right_en_passant &= right_en_passant - 1;
-                let from = Square::from(to.as_u8() - 9);
-                let captured_sq = Square::from(to.as_u8() - 8);
+            let right_en_passant = ((pawns << 9) & !FILE_A) & en_passant_mask;
+            for to in right_en_passant {
+                let from = Square(to.as_u8() - 9);
+                let captured_sq = Square(to.as_u8() - 8);
                 let changed_occ = self.occ
-                    ^ (1u64 << from.as_u8())
-                    ^ (1u64 << captured_sq.as_u8())
-                    ^ (1u64 << to.as_u8());
+                    ^ Bitboard::from(from)
+                    ^ Bitboard::from(captured_sq)
+                    ^ Bitboard::from(to);
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::BP as usize] ^= 1u64 << captured_sq.as_u8();
-                changed_pieces[Piece::WP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
+                changed_pieces[Piece::BP as usize] ^= Bitboard::from(captured_sq);
+                changed_pieces[Piece::WP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
                 let checkers = self.compute_checkers(
-                    Square::from(self.pieces[Piece::WK as usize].trailing_zeros() as u8),
+                    Square(self.pieces[Piece::WK as usize].trailing_zeros()),
                     changed_occ,
                     Color::Black,
                     &changed_pieces,
                 );
-                if checkers == 0 {
+                if checkers.is_empty() {
                     moves.push(Move::new(
                         from,
                         to,
@@ -174,26 +160,24 @@ impl Board {
     fn get_black_pawn_moves(
         &self,
         moves: &mut MoveList,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
-        pin_rays: &[u64; 64],
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
+        pin_rays: &[Bitboard; 64],
     ) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
 
         // Single pushes
-        let mut single_push = (pawns >> 8) & empty;
-        while single_push != 0 {
-            let to = Square::from(single_push.trailing_zeros() as u8);
-            single_push &= single_push - 1;
-            let from = Square::from(to.as_u8() + 8);
+        let single_push = (pawns >> 8) & empty;
+        for to in single_push {
+            let from = Square(to.as_u8() + 8);
             let is_promotion = to.as_u8() < 8;
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
             let is_legal = if is_pinned {
-                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
+                !(Bitboard::from(to) & pin_rays[from.as_usize()] & block_mask).is_empty()
             } else {
-                (block_mask >> to.as_u8()) & 1 != 0
+                !(block_mask & Bitboard::from(to)).is_empty()
             };
             if is_legal {
                 if is_promotion {
@@ -209,16 +193,14 @@ impl Board {
 
         // Double pushes
         let first_push = ((pawns & RANK_7) >> 8) & empty;
-        let mut double_push = (first_push >> 8) & empty;
-        while double_push != 0 {
-            let to = Square::from(double_push.trailing_zeros() as u8);
-            double_push &= double_push - 1;
-            let from = Square::from(to.as_u8() + 16);
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+        let double_push = (first_push >> 8) & empty;
+        for to in double_push {
+            let from = Square(to.as_u8() + 16);
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
             let is_legal = if is_pinned {
-                (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & block_mask != 0
+                !(Bitboard::from(to) & pin_rays[from.as_usize()] & block_mask).is_empty()
             } else {
-                (block_mask >> to.as_u8()) & 1 != 0
+                !(block_mask & Bitboard::from(to)).is_empty()
             };
             if is_legal {
                 moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
@@ -226,23 +208,16 @@ impl Board {
         }
 
         // Captures
-        let mut captures = pawns;
-        while captures != 0 {
-            let from = Square::from(captures.trailing_zeros() as u8);
-            captures &= captures - 1;
-
-            let mut attacks = BLACK_PAWN_ATTACKS[from.as_usize()] & self.color_occ[0];
-
-            while attacks != 0 {
-                let to = Square::from(attacks.trailing_zeros() as u8);
-                attacks &= attacks - 1;
-
+        let captures = pawns;
+        for from in captures {
+            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()] & self.color_occ[0];
+            for to in attacks {
                 let is_promotion = to.as_u8() < 8;
-                let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+                let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
                 let is_legal = if is_pinned {
-                    (1u64 << to.as_u8()) & pin_rays[from.as_usize()] & capture_mask != 0
+                    !(Bitboard::from(to) & pin_rays[from.as_usize()] & capture_mask).is_empty()
                 } else {
-                    (capture_mask >> to.as_u8()) & 1 != 0
+                    !(capture_mask & Bitboard::from(to)).is_empty()
                 };
                 if is_legal {
                     if is_promotion {
@@ -279,27 +254,25 @@ impl Board {
 
         // En passant
         if self.en_passant.as_u8() < 64 {
-            let en_passant_mask = 1 << self.en_passant.as_u8();
-            let mut left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
-            while left_en_passant != 0 {
-                let to = Square::from(left_en_passant.trailing_zeros() as u8);
-                left_en_passant &= left_en_passant - 1;
-                let from = Square::from(to.as_u8() + 7);
-                let captured_sq = Square::from(to.as_u8() + 8);
+            let en_passant_mask = Bitboard::from(self.en_passant);
+            let left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
+            for to in left_en_passant {
+                let from = Square(to.as_u8() + 7);
+                let captured_sq = Square(to.as_u8() + 8);
                 let changed_occ = self.occ
-                    ^ (1u64 << from.as_u8())
-                    ^ (1u64 << captured_sq.as_u8())
-                    ^ (1u64 << to.as_u8());
+                    ^ Bitboard::from(from)
+                    ^ Bitboard::from(captured_sq)
+                    ^ Bitboard::from(to);
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq.as_u8();
-                changed_pieces[Piece::BP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
+                changed_pieces[Piece::WP as usize] ^= Bitboard::from(captured_sq);
+                changed_pieces[Piece::BP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
                 let checkers = self.compute_checkers(
-                    Square::from(self.pieces[Piece::BK as usize].trailing_zeros() as u8),
+                    Square(self.pieces[Piece::BK as usize].trailing_zeros()),
                     changed_occ,
                     Color::White,
                     &changed_pieces,
                 );
-                if checkers == 0 {
+                if checkers.is_empty() {
                     moves.push(Move::new(
                         from,
                         to,
@@ -308,26 +281,24 @@ impl Board {
                     ));
                 }
             }
-            let mut right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
-            while right_en_passant != 0 {
-                let to = Square::from(right_en_passant.trailing_zeros() as u8);
-                right_en_passant &= right_en_passant - 1;
-                let from = Square::from(to.as_u8() + 9);
-                let captured_sq = Square::from(to.as_u8() + 8);
+            let right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
+            for to in right_en_passant {
+                let from = Square(to.as_u8() + 9);
+                let captured_sq = Square(to.as_u8() + 8);
                 let changed_occ = self.occ
-                    ^ (1u64 << from.as_u8())
-                    ^ (1u64 << captured_sq.as_u8())
-                    ^ (1u64 << to.as_u8());
+                    ^ Bitboard::from(from)
+                    ^ Bitboard::from(captured_sq)
+                    ^ Bitboard::from(to);
                 let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::WP as usize] ^= 1u64 << captured_sq.as_u8();
-                changed_pieces[Piece::BP as usize] ^= (1u64 << to.as_u8()) | (1u64 << from.as_u8());
+                changed_pieces[Piece::WP as usize] ^= Bitboard::from(captured_sq);
+                changed_pieces[Piece::BP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
                 let checkers = self.compute_checkers(
-                    Square::from(self.pieces[Piece::BK as usize].trailing_zeros() as u8),
+                    Square(self.pieces[Piece::BK as usize].trailing_zeros()),
                     changed_occ,
                     Color::White,
                     &changed_pieces,
                 );
-                if checkers == 0 {
+                if checkers.is_empty() {
                     moves.push(Move::new(
                         from,
                         to,
@@ -343,24 +314,18 @@ impl Board {
         &self,
         moves: &mut MoveList,
         knight_piece: Piece,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
     ) {
         let side_to_move = self.side_to_move;
-        let mut knights = self.pieces[knight_piece as usize] & !pinned;
-        while knights != 0 {
-            let from = Square::from(knights.trailing_zeros() as u8);
-            knights &= knights - 1;
-
-            let mut attacks = KNIGHT_ATTACKS[from.as_usize()]
+        let knights = self.pieces[knight_piece as usize] & !pinned;
+        for from in knights {
+            let attacks = KNIGHT_ATTACKS[from.as_usize()]
                 & !self.color_occ[side_to_move as usize]
                 & (block_mask | capture_mask);
 
-            while attacks != 0 {
-                let to = Square::from(attacks.trailing_zeros() as u8);
-                attacks &= attacks - 1;
-
+            for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -376,18 +341,15 @@ impl Board {
         &self,
         moves: &mut MoveList,
         rook_piece: Piece,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
-        pin_rays: &[u64; 64],
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
+        pin_rays: &[Bitboard; 64],
     ) {
         let side_to_move = self.side_to_move;
-        let mut rooks = self.pieces[rook_piece as usize];
-        while rooks != 0 {
-            let from = Square::from(rooks.trailing_zeros() as u8);
-            rooks &= rooks - 1;
-
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+        let rooks = self.pieces[rook_piece as usize];
+        for from in rooks {
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
 
             let mask = ROOK_MASKS[from.as_usize()];
             let blockers = self.occ & mask;
@@ -402,11 +364,8 @@ impl Board {
             };
             let attacks = ROOK_ATTACKS[from.as_usize()][idx] & legal_mask;
 
-            let mut remaining = attacks;
-            while remaining != 0 {
-                let to = Square::from(remaining.trailing_zeros() as u8);
-                remaining &= remaining - 1;
-
+            let remaining = attacks;
+            for to in remaining {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -421,18 +380,15 @@ impl Board {
         &self,
         moves: &mut MoveList,
         bishop_piece: Piece,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
-        pin_rays: &[u64; 64],
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
+        pin_rays: &[Bitboard; 64],
     ) {
         let side_to_move = self.side_to_move;
-        let mut bishops = self.pieces[bishop_piece as usize];
-        while bishops != 0 {
-            let from = Square::from(bishops.trailing_zeros() as u8);
-            bishops &= bishops - 1;
-
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+        let bishops = self.pieces[bishop_piece as usize];
+        for from in bishops {
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
 
             let mask = BISHOP_MASKS[from.as_usize()];
             let blockers = self.occ & mask;
@@ -447,11 +403,8 @@ impl Board {
             };
             let attacks = BISHOP_ATTACKS[from.as_usize()][idx] & legal_mask;
 
-            let mut remaining = attacks;
-            while remaining != 0 {
-                let to = Square::from(remaining.trailing_zeros() as u8);
-                remaining &= remaining - 1;
-
+            let remaining = attacks;
+            for to in remaining {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -466,18 +419,15 @@ impl Board {
         &self,
         moves: &mut MoveList,
         queen_piece: Piece,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
-        pin_rays: &[u64; 64],
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
+        pin_rays: &[Bitboard; 64],
     ) {
         let side_to_move = self.side_to_move;
-        let mut queens = self.pieces[queen_piece as usize];
-        while queens != 0 {
-            let from = Square::from(queens.trailing_zeros() as u8);
-            queens &= queens - 1;
-
-            let is_pinned = (pinned >> from.as_u8()) & 1 != 0;
+        let queens = self.pieces[queen_piece as usize];
+        for from in queens {
+            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
 
             let orth_mask = ROOK_MASKS[from.as_usize()];
             let orth_blockers = self.occ & orth_mask;
@@ -501,11 +451,8 @@ impl Board {
 
             let attacks = (orth_attacks | diag_attacks) & legal_mask;
 
-            let mut remaining = attacks;
-            while remaining != 0 {
-                let to = Square::from(remaining.trailing_zeros() as u8);
-                remaining &= remaining - 1;
-
+            let remaining = attacks;
+            for to in remaining {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -516,76 +463,59 @@ impl Board {
         }
     }
 
-    fn compute_danger(&self, king_sq: Square) -> u64 {
-        let mut danger = 0;
-        let (
-            mut pawns,
-            pawn_attack_table,
-            mut knights,
-            mut orth_pieces,
-            mut diag_pieces,
-            enemy_king,
-        ) = match self.side_to_move {
-            Color::White => (
-                self.pieces[Piece::BP as usize],
-                BLACK_PAWN_ATTACKS,
-                self.pieces[Piece::BN as usize],
-                self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
-                self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
-                self.pieces[Piece::BK as usize],
-            ),
-            Color::Black => (
-                self.pieces[Piece::WP as usize],
-                WHITE_PAWN_ATTACKS,
-                self.pieces[Piece::WN as usize],
-                self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
-                self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
-                self.pieces[Piece::WK as usize],
-            ),
-        };
-        let kingless_occ = self.occ & !(1u64 << king_sq.as_u8());
-        while pawns != 0 {
-            let sq = pawns.trailing_zeros() as u8;
-            pawns &= pawns - 1;
-            danger |= pawn_attack_table[sq as usize];
+    fn compute_danger(&self, king_sq: Square) -> Bitboard {
+        let mut danger = Bitboard(0);
+        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces, enemy_king) =
+            match self.side_to_move {
+                Color::White => (
+                    self.pieces[Piece::BP as usize],
+                    BLACK_PAWN_ATTACKS,
+                    self.pieces[Piece::BN as usize],
+                    self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
+                    self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
+                    self.pieces[Piece::BK as usize],
+                ),
+                Color::Black => (
+                    self.pieces[Piece::WP as usize],
+                    WHITE_PAWN_ATTACKS,
+                    self.pieces[Piece::WN as usize],
+                    self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
+                    self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+                    self.pieces[Piece::WK as usize],
+                ),
+            };
+        let kingless_occ = self.occ & !Bitboard::from(king_sq);
+        for sq in pawns {
+            danger |= pawn_attack_table[sq.as_usize()];
         }
-        while knights != 0 {
-            let sq = knights.trailing_zeros() as u8;
-            knights &= knights - 1;
-            danger |= KNIGHT_ATTACKS[sq as usize];
+        for sq in knights {
+            danger |= KNIGHT_ATTACKS[sq.as_usize()];
         }
-        while diag_pieces != 0 {
-            let sq = diag_pieces.trailing_zeros();
-            diag_pieces &= diag_pieces - 1;
-            let mask = BISHOP_MASKS[sq as usize];
+        for sq in diag_pieces {
+            let mask = BISHOP_MASKS[sq.as_usize()];
             let blockers = kingless_occ & mask;
-            let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq as usize])
-                >> BISHOP_SHIFTS[sq as usize]) as usize;
-            danger |= BISHOP_ATTACKS[sq as usize][idx];
+            let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq.as_usize()])
+                >> BISHOP_SHIFTS[sq.as_usize()]) as usize;
+            danger |= BISHOP_ATTACKS[sq.as_usize()][idx];
         }
-        while orth_pieces != 0 {
-            let sq = orth_pieces.trailing_zeros();
-            orth_pieces &= orth_pieces - 1;
-            let mask = ROOK_MASKS[sq as usize];
+        for sq in orth_pieces {
+            let mask = ROOK_MASKS[sq.as_usize()];
             let blockers = kingless_occ & mask;
-            let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq as usize])
-                >> ROOK_SHIFTS[sq as usize]) as usize;
-            danger |= ROOK_ATTACKS[sq as usize][idx];
+            let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq.as_usize()])
+                >> ROOK_SHIFTS[sq.as_usize()]) as usize;
+            danger |= ROOK_ATTACKS[sq.as_usize()][idx];
         }
         danger |= KING_ATTACKS[enemy_king.trailing_zeros() as usize];
 
         danger
     }
 
-    fn get_king_moves(&self, moves: &mut MoveList, king_sq: Square, danger_mask: u64) {
+    fn get_king_moves(&self, moves: &mut MoveList, king_sq: Square, danger_mask: Bitboard) {
         let side_to_move = self.side_to_move;
-        let mut attacks = KING_ATTACKS[king_sq.as_usize()]
+        let attacks = KING_ATTACKS[king_sq.as_usize()]
             & !self.color_occ[side_to_move as usize]
             & !danger_mask;
-        while attacks != 0 {
-            let to = Square::from(attacks.trailing_zeros() as u8);
-            attacks &= attacks - 1;
-
+        for to in attacks {
             let flag = if self.piece_at(to) == Piece::None {
                 0
             } else {
@@ -599,11 +529,11 @@ impl Board {
     pub fn compute_checkers(
         &self,
         king_sq: Square,
-        occ: u64,
+        occ: Bitboard,
         attacker_color: Color,
-        pieces: &[u64; 12],
-    ) -> u64 {
-        let mut checkers = 0;
+        pieces: &[Bitboard; 12],
+    ) -> Bitboard {
+        let mut checkers = Bitboard(0);
         let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = match attacker_color {
             Color::Black => (
                 pieces[Piece::BP as usize],
@@ -643,9 +573,9 @@ impl Board {
         checkers
     }
 
-    fn compute_pins(&self, king_sq: Square) -> (u64, [u64; 64]) {
-        let mut pinned = 0;
-        let mut pin_rays = [0; 64];
+    fn compute_pins(&self, king_sq: Square) -> (Bitboard, [Bitboard; 64]) {
+        let mut pinned = Bitboard(0);
+        let mut pin_rays = [Bitboard(0); 64];
 
         let (orth_pieces, diag_pieces) = match self.side_to_move {
             Color::White => (
@@ -661,85 +591,98 @@ impl Board {
         let potential_diag_attackers = BISHOP_ATTACKS[king_sq.as_usize()][0] & diag_pieces;
         let potential_orth_attackers = ROOK_ATTACKS[king_sq.as_usize()][0] & orth_pieces;
 
-        let mut attackers = potential_diag_attackers | potential_orth_attackers;
+        let attackers = potential_diag_attackers | potential_orth_attackers;
 
-        while attackers != 0 {
-            let attacker_sq = attackers.trailing_zeros() as usize;
-            attackers &= attackers - 1;
-
-            let between = BETWEEN[king_sq.as_usize()][attacker_sq];
+        for attacker_sq in attackers {
+            let between = BETWEEN[king_sq.as_usize()][attacker_sq.as_usize()];
             let blockers = between & self.occ;
             let our_blockers = between & self.color_occ[self.side_to_move as usize];
 
-            if blockers.count_ones() == 1 && our_blockers != 0 {
+            if blockers.count_ones() == 1 && !our_blockers.is_empty() {
                 let pinned_sq = blockers.trailing_zeros() as usize;
                 pinned |= blockers;
-                pin_rays[pinned_sq] = between | (1u64 << attacker_sq);
+                pin_rays[pinned_sq] = between | Bitboard::from(attacker_sq);
             }
         }
 
         (pinned, pin_rays)
     }
 
-    fn compute_block_mask(&self, king_sq: Square, checkers: u64) -> u64 {
-        let checker_sq = Square::from(checkers.trailing_zeros() as u8);
+    fn compute_block_mask(&self, king_sq: Square, checkers: Bitboard) -> Bitboard {
+        let checker_sq = Square(checkers.trailing_zeros());
         let checker_piece = self.piece_at(checker_sq);
 
         match checker_piece {
-            Piece::BN | Piece::WN | Piece::BP | Piece::WP => 0,
+            Piece::BN | Piece::WN | Piece::BP | Piece::WP => Bitboard(0),
             Piece::BR | Piece::WR | Piece::BB | Piece::WB | Piece::BQ | Piece::WQ => {
                 BETWEEN[king_sq.as_usize()][checker_sq.as_usize()]
             }
-            _ => 0,
+            _ => Bitboard(0),
         }
     }
 
-    fn gen_castling_moves(&self, moves: &mut MoveList, king_danger_squares: u64) {
+    fn gen_castling_moves(&self, moves: &mut MoveList, king_danger_squares: Bitboard) {
         let castling_rights = self.castling;
         match self.side_to_move {
             Color::White => {
                 if castling_rights & WK_CASTLE != 0
-                    && self.occ & ((1u64 << 5) | (1u64 << 6)) == 0
-                    && king_danger_squares & ((1u64 << 4) | (1u64 << 5) | (1u64 << 6)) == 0
+                    && (self.occ & (Bitboard::from(Square(5)) | Bitboard::from(Square(6))))
+                        .is_empty()
+                    && (king_danger_squares
+                        & (Bitboard::from(Square(4))
+                            | Bitboard::from(Square(5))
+                            | Bitboard::from(Square(6))))
+                    .is_empty()
                 {
-                    moves.push(Move::new(
-                        Square::from(4),
-                        Square::from(6),
-                        Piece::None,
-                        CASTLING_FLAG,
-                    ));
+                    moves.push(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
                 }
                 if castling_rights & WQ_CASTLE != 0
-                    && self.occ & ((1u64 << 1) | (1u64 << 2) | (1u64 << 3)) == 0
-                    && king_danger_squares & ((1u64 << 4) | (1u64 << 3) | (1u64 << 2)) == 0
+                    && (self.occ
+                        & (Bitboard::from(Square(1))
+                            | Bitboard::from(Square(2))
+                            | Bitboard::from(Square(3))))
+                    .is_empty()
+                    && (king_danger_squares
+                        & (Bitboard::from(Square(4))
+                            | Bitboard::from(Square(3))
+                            | Bitboard::from(Square(2))))
+                    .is_empty()
                 {
-                    moves.push(Move::new(
-                        Square::from(4),
-                        Square::from(2),
-                        Piece::None,
-                        CASTLING_FLAG,
-                    ));
+                    moves.push(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
                 }
             }
             Color::Black => {
                 if castling_rights & BK_CASTLE != 0
-                    && self.occ & ((1u64 << 61) | (1u64 << 62)) == 0
-                    && king_danger_squares & ((1u64 << 60) | (1u64 << 61) | (1u64 << 62)) == 0
+                    && (self.occ & (Bitboard::from(Square(61)) | Bitboard::from(Square(62))))
+                        .is_empty()
+                    && (king_danger_squares
+                        & (Bitboard::from(Square(60))
+                            | Bitboard::from(Square(61))
+                            | Bitboard::from(Square(62))))
+                    .is_empty()
                 {
                     moves.push(Move::new(
-                        Square::from(60),
-                        Square::from(62),
+                        Square(60),
+                        Square(62),
                         Piece::None,
                         CASTLING_FLAG,
                     ));
                 }
                 if castling_rights & BQ_CASTLE != 0
-                    && self.occ & ((1u64 << 57) | (1u64 << 58) | (1u64 << 59)) == 0
-                    && king_danger_squares & ((1u64 << 60) | (1u64 << 59) | (1u64 << 58)) == 0
+                    && (self.occ
+                        & (Bitboard::from(Square(57))
+                            | Bitboard::from(Square(58))
+                            | Bitboard::from(Square(59))))
+                    .is_empty()
+                    && (king_danger_squares
+                        & (Bitboard::from(Square(60))
+                            | Bitboard::from(Square(59))
+                            | Bitboard::from(Square(58))))
+                    .is_empty()
                 {
                     moves.push(Move::new(
-                        Square::from(60),
-                        Square::from(58),
+                        Square(60),
+                        Square(58),
                         Piece::None,
                         CASTLING_FLAG,
                     ));
@@ -751,10 +694,10 @@ impl Board {
     fn get_non_king_moves(
         &self,
         moves: &mut MoveList,
-        block_mask: u64,
-        capture_mask: u64,
-        pinned: u64,
-        pin_rays: [u64; 64],
+        block_mask: Bitboard,
+        capture_mask: Bitboard,
+        pinned: Bitboard,
+        pin_rays: [Bitboard; 64],
     ) {
         match self.side_to_move {
             Color::White => {
@@ -820,20 +763,20 @@ impl Board {
         moves.clear();
         let side_to_move = self.side_to_move;
 
-        let king_sq = Square::from(
+        let king_sq = Square(
             self.pieces[if side_to_move == Color::White {
                 Piece::WK
             } else {
                 Piece::BK
             } as usize]
-                .trailing_zeros() as u8,
+                .trailing_zeros(),
         );
         debug_assert!(king_sq.as_u8() <= 64);
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
         self.get_king_moves(moves, king_sq, king_danger_mask);
-        let checkers: u64 =
+        let checkers: Bitboard =
             self.compute_checkers(king_sq, self.occ, side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
 
         if checkers.count_ones() > 1 {
@@ -844,13 +787,13 @@ impl Board {
         // pin_rays: list of bitmaps for each square a piece could be on, that show where that piece can move without puting the king in check
         let (pinned, pin_rays) = self.compute_pins(king_sq);
 
-        let in_check = checkers != 0;
+        let in_check = !checkers.is_empty();
         // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
         let (block_mask, capture_mask) = if in_check {
             (self.compute_block_mask(king_sq, checkers), checkers)
         } else {
             self.gen_castling_moves(moves, king_danger_mask); // Castling moves can only happen when not in check
-            (!0u64, !0u64) // All squares are valid to move to and capture on if not check are in place (except for pins)
+            (!Bitboard(0), !Bitboard(0)) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
         self.get_non_king_moves(moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep

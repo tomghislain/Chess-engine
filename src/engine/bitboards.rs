@@ -1,73 +1,75 @@
-pub const FILE_A: u64 = 0x0101010101010101;
-pub const FILE_B: u64 = 0x0202020202020202;
-pub const FILE_G: u64 = 0x4040404040404040;
-pub const FILE_H: u64 = 0x8080808080808080;
-pub const RANK_2: u64 = 0x000000000000FF00;
-pub const RANK_7: u64 = 0x00FF000000000000;
+use crate::engine::types::Bitboard;
 
-const fn gen_white_pawn_attacks() -> [u64; 64] {
-    let mut table = [0; 64];
+pub const FILE_A: Bitboard = Bitboard(0x0101010101010101);
+pub const FILE_B: Bitboard = Bitboard(0x0202020202020202);
+pub const FILE_G: Bitboard = Bitboard(0x4040404040404040);
+pub const FILE_H: Bitboard = Bitboard(0x8080808080808080);
+pub const RANK_2: Bitboard = Bitboard(0x000000000000FF00);
+pub const RANK_7: Bitboard = Bitboard(0x00FF000000000000);
+
+const fn gen_white_pawn_attacks() -> [Bitboard; 64] {
+    let mut table = [Bitboard(0); 64];
     let mut sq = 0;
     while sq < 64 {
         let sq_mask = 1u64 << sq;
         let mut mask = 0u64;
         if sq < 56 {
-            mask |= (sq_mask << 7) & !FILE_H;
-            mask |= (sq_mask << 9) & !FILE_A;
+            mask |= (sq_mask << 7) & !FILE_H.0;
+            mask |= (sq_mask << 9) & !FILE_A.0;
         }
-        table[sq] = mask;
+        table[sq] = Bitboard(mask);
         sq += 1;
     }
     table
 }
 
-pub const WHITE_PAWN_ATTACKS: [u64; 64] = gen_white_pawn_attacks();
+pub const WHITE_PAWN_ATTACKS: [Bitboard; 64] = gen_white_pawn_attacks();
 
-const fn gen_black_pawn_attacks() -> [u64; 64] {
-    let mut table = [0; 64];
+const fn gen_black_pawn_attacks() -> [Bitboard; 64] {
+    let mut table = [Bitboard(0); 64];
     let mut sq = 0;
     while sq < 64 {
         let sq_mask = 1u64 << sq;
         let mut mask = 0u64;
         if sq > 7 {
-            mask |= (sq_mask >> 7) & !FILE_A;
-            mask |= (sq_mask >> 9) & !FILE_H;
+            mask |= (sq_mask >> 7) & !FILE_A.0;
+            mask |= (sq_mask >> 9) & !FILE_H.0;
         }
-        table[sq] = mask;
+        table[sq] = Bitboard(mask);
         sq += 1;
     }
     table
 }
 
-pub const BLACK_PAWN_ATTACKS: [u64; 64] = gen_black_pawn_attacks();
+pub const BLACK_PAWN_ATTACKS: [Bitboard; 64] = gen_black_pawn_attacks();
 
-const fn gen_knight_attacks() -> [u64; 64] {
-    let mut table = [0u64; 64];
+const fn gen_knight_attacks() -> [Bitboard; 64] {
+    let mut table = [Bitboard(0); 64];
     let mut sq = 0;
 
     while sq < 64 {
         let mask = 1u64 << sq;
 
-        let attacks = ((mask << 17) & !FILE_A)
-            | ((mask << 15) & !FILE_H)
-            | ((mask << 10) & !FILE_A & !FILE_B)
-            | ((mask << 6) & !FILE_H & !FILE_G)
-            | ((mask >> 17) & !FILE_H)
-            | ((mask >> 15) & !FILE_A)
-            | ((mask >> 10) & !FILE_H & !FILE_G)
-            | ((mask >> 6) & !FILE_A & !FILE_B);
+        let attacks = ((mask << 17) & !FILE_A.0)
+            | ((mask << 15) & !FILE_H.0)
+            | ((mask << 10) & !FILE_A.0 & !FILE_B.0)
+            | ((mask << 6) & !FILE_H.0 & !FILE_G.0)
+            | ((mask >> 17) & !FILE_H.0)
+            | ((mask >> 15) & !FILE_A.0)
+            | ((mask >> 10) & !FILE_H.0 & !FILE_G.0)
+            | ((mask >> 6) & !FILE_A.0 & !FILE_B.0);
 
-        table[sq as usize] = attacks;
+        table[sq as usize] = Bitboard(attacks);
         sq += 1;
     }
 
     table
 }
 
-pub const KNIGHT_ATTACKS: [u64; 64] = gen_knight_attacks();
+pub const KNIGHT_ATTACKS: [Bitboard; 64] = gen_knight_attacks();
 
-const fn gen_rook_masks() -> [u64; 64] {
-    let mut masks = [0; 64];
+const fn gen_rook_masks() -> [Bitboard; 64] {
+    let mut masks = [Bitboard(0); 64];
     let mut sq: usize = 0;
     while sq < 64 {
         let rank = sq / 8;
@@ -97,14 +99,14 @@ const fn gen_rook_masks() -> [u64; 64] {
             mask |= 1u64 << (rank as i32 * 8 + f);
             f -= 1;
         }
-        masks[sq] = mask;
+        masks[sq] = Bitboard(mask);
         sq += 1;
     }
     masks
 }
 
-const fn gen_bishop_masks() -> [u64; 64] {
-    let mut masks = [0; 64];
+const fn gen_bishop_masks() -> [Bitboard; 64] {
+    let mut masks = [Bitboard(0); 64];
     let mut sq: usize = 0;
     while sq < 64 {
         let rank = sq / 8;
@@ -142,15 +144,15 @@ const fn gen_bishop_masks() -> [u64; 64] {
             r -= 1;
             f -= 1;
         }
-        masks[sq] = mask;
+        masks[sq] = Bitboard(mask);
         sq += 1;
     }
     masks
 }
 
-pub const ROOK_MASKS: [u64; 64] = gen_rook_masks();
+pub const ROOK_MASKS: [Bitboard; 64] = gen_rook_masks();
 
-pub const BISHOP_MASKS: [u64; 64] = gen_bishop_masks();
+pub const BISHOP_MASKS: [Bitboard; 64] = gen_bishop_masks();
 
 // Magics and shift from https://github.com/SebLague/Chess-Coding-Adventure/
 pub const ROOK_MAGIC_NUMBERS: [u64; 64] = [
@@ -399,8 +401,8 @@ const fn bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     attacks
 }
 
-const fn gen_rook_attacks() -> [[u64; 4096]; 64] {
-    let mut table = [[0; 4096]; 64];
+const fn gen_rook_attacks() -> [[Bitboard; 4096]; 64] {
+    let mut table = [[Bitboard(0); 4096]; 64];
     let mut sq = 0;
     while sq < 64 {
         let mask = ROOK_MASKS[sq];
@@ -410,8 +412,8 @@ const fn gen_rook_attacks() -> [[u64; 4096]; 64] {
         loop {
             let attacks = rook_attacks_for_blockers(sq, blockers);
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
-            table[sq][index] = attacks;
-            blockers = (blockers.wrapping_sub(mask)) & mask;
+            table[sq][index] = Bitboard(attacks);
+            blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
             if blockers == 0 {
                 break;
             }
@@ -421,8 +423,8 @@ const fn gen_rook_attacks() -> [[u64; 4096]; 64] {
     table
 }
 
-const fn gen_bishop_attacks() -> [[u64; 512]; 64] {
-    let mut table = [[0; 512]; 64];
+const fn gen_bishop_attacks() -> [[Bitboard; 512]; 64] {
+    let mut table = [[Bitboard(0); 512]; 64];
     let mut sq = 0;
     while sq < 64 {
         let mask = BISHOP_MASKS[sq];
@@ -432,8 +434,8 @@ const fn gen_bishop_attacks() -> [[u64; 512]; 64] {
         loop {
             let attacks = bishop_attacks_for_blockers(sq, blockers);
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
-            table[sq][index] = attacks;
-            blockers = (blockers.wrapping_sub(mask)) & mask;
+            table[sq][index] = Bitboard(attacks);
+            blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
             if blockers == 0 {
                 break;
             }
@@ -443,12 +445,12 @@ const fn gen_bishop_attacks() -> [[u64; 512]; 64] {
     table
 }
 
-pub const ROOK_ATTACKS: [[u64; 4096]; 64] = gen_rook_attacks();
+pub const ROOK_ATTACKS: [[Bitboard; 4096]; 64] = gen_rook_attacks();
 
-pub const BISHOP_ATTACKS: [[u64; 512]; 64] = gen_bishop_attacks();
+pub const BISHOP_ATTACKS: [[Bitboard; 512]; 64] = gen_bishop_attacks();
 
-const fn gen_king_attacks() -> [u64; 64] {
-    let mut table = [0u64; 64];
+const fn gen_king_attacks() -> [Bitboard; 64] {
+    let mut table = [Bitboard(0); 64];
 
     let mut sq = 0;
     while sq < 64 {
@@ -478,13 +480,13 @@ const fn gen_king_attacks() -> [u64; 64] {
             }
             dr += 1;
         }
-        table[sq] = attacks;
+        table[sq] = Bitboard(attacks);
         sq += 1;
     }
     table
 }
 
-pub const KING_ATTACKS: [u64; 64] = gen_king_attacks();
+pub const KING_ATTACKS: [Bitboard; 64] = gen_king_attacks();
 
 const fn direction(from_i: i32, to_i: i32) -> i32 {
     let (from_rank, from_file) = (from_i / 8, from_i % 8);
@@ -516,14 +518,14 @@ const fn direction(from_i: i32, to_i: i32) -> i32 {
     }
 }
 
-const fn between_mask(from: usize, to: usize) -> u64 {
+const fn between_mask(from: usize, to: usize) -> Bitboard {
     let from_i = from as i32;
     let to_i = to as i32;
 
     let step = direction(from_i, to_i);
 
     if step == 0 {
-        return 0;
+        return Bitboard(0);
     }
 
     let mut sq = from_i + step;
@@ -534,11 +536,11 @@ const fn between_mask(from: usize, to: usize) -> u64 {
         sq += step;
     }
 
-    mask
+    Bitboard(mask)
 }
 
-const fn gen_between() -> [[u64; 64]; 64] {
-    let mut table = [[0u64; 64]; 64];
+const fn gen_between() -> [[Bitboard; 64]; 64] {
+    let mut table = [[Bitboard(0); 64]; 64];
 
     let mut from = 0;
     while from < 64 {
@@ -553,4 +555,4 @@ const fn gen_between() -> [[u64; 64]; 64] {
     table
 }
 
-pub const BETWEEN: [[u64; 64]; 64] = gen_between();
+pub const BETWEEN: [[Bitboard; 64]; 64] = gen_between();

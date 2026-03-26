@@ -83,10 +83,10 @@ pub struct Undo {
 
 #[derive(Clone)]
 pub struct Board {
-    pub pieces: [u64; 12],
-    pub color_occ: [u64; 2],
+    pub pieces: [Bitboard; 12],
+    pub color_occ: [Bitboard; 2],
     pub mailbox: [Piece; 64],
-    pub occ: u64,
+    pub occ: Bitboard,
 
     pub side_to_move: Color,
     pub castling: u8,
@@ -117,9 +117,8 @@ impl Board {
         // Pieces
         for (i, &bb) in self.pieces.iter().enumerate() {
             let mut pieces = bb;
-            while pieces != 0 {
-                let sq = pieces.trailing_zeros();
-                pieces &= pieces - 1;
+            while pieces.0 != 0 {
+                let sq = pieces.pop_lsb();
                 hash ^= z.piece_square[i][sq as usize];
             }
         }
@@ -142,35 +141,39 @@ impl Board {
     }
     // Function to create a board at the default position
     pub fn new() -> Self {
-        let mut pieces = [0u64; 12];
+        let mut pieces = [Bitboard(0); 12];
 
-        pieces[Piece::WP as usize] = (1 << 8)
-            | (1 << 9)
-            | (1 << 10)
-            | (1 << 11)
-            | (1 << 12)
-            | (1 << 13)
-            | (1 << 14)
-            | (1 << 15);
-        pieces[Piece::WR as usize] = (1 << 0) | (1 << 7);
-        pieces[Piece::WN as usize] = (1 << 1) | (1 << 6);
-        pieces[Piece::WB as usize] = (1 << 2) | (1 << 5);
-        pieces[Piece::WQ as usize] = 1 << 3;
-        pieces[Piece::WK as usize] = 1 << 4;
+        pieces[Piece::WP as usize] = Bitboard(
+            (1 << 8)
+                | (1 << 9)
+                | (1 << 10)
+                | (1 << 11)
+                | (1 << 12)
+                | (1 << 13)
+                | (1 << 14)
+                | (1 << 15),
+        );
+        pieces[Piece::WR as usize] = Bitboard((1 << 0) | (1 << 7));
+        pieces[Piece::WN as usize] = Bitboard((1 << 1) | (1 << 6));
+        pieces[Piece::WB as usize] = Bitboard((1 << 2) | (1 << 5));
+        pieces[Piece::WQ as usize] = Bitboard(1 << 3);
+        pieces[Piece::WK as usize] = Bitboard(1 << 4);
 
-        pieces[Piece::BP as usize] = (1 << 48)
-            | (1 << 49)
-            | (1 << 50)
-            | (1 << 51)
-            | (1 << 52)
-            | (1 << 53)
-            | (1 << 54)
-            | (1 << 55);
-        pieces[Piece::BR as usize] = (1 << 56) | (1 << 63);
-        pieces[Piece::BN as usize] = (1 << 57) | (1 << 62);
-        pieces[Piece::BB as usize] = (1 << 58) | (1 << 61);
-        pieces[Piece::BQ as usize] = 1 << 59;
-        pieces[Piece::BK as usize] = 1 << 60;
+        pieces[Piece::BP as usize] = Bitboard(
+            (1 << 48)
+                | (1 << 49)
+                | (1 << 50)
+                | (1 << 51)
+                | (1 << 52)
+                | (1 << 53)
+                | (1 << 54)
+                | (1 << 55),
+        );
+        pieces[Piece::BR as usize] = Bitboard((1 << 56) | (1 << 63));
+        pieces[Piece::BN as usize] = Bitboard((1 << 57) | (1 << 62));
+        pieces[Piece::BB as usize] = Bitboard((1 << 58) | (1 << 61));
+        pieces[Piece::BQ as usize] = Bitboard(1 << 59);
+        pieces[Piece::BK as usize] = Bitboard(1 << 60);
 
         let mailbox = [
             Piece::WR,
@@ -260,7 +263,7 @@ impl Board {
 
         let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
 
-        let en_passant = Square::from(64);
+        let en_passant = Square(64);
         let halfmove_clock = 0;
         let zobrist = 0;
         let history = Vec::with_capacity(256);
@@ -290,19 +293,19 @@ impl Board {
 
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
     fn remove_piece(&mut self, p: Piece, sq: Square) {
-        let mask = 1 << sq.as_u8();
+        let mask = Bitboard::from(sq);
         self.pieces[p as usize] &= !mask;
     }
 
     // Sets the bit to 1 at index sq of the bitmap at index p of self.pieces
     fn add_piece(&mut self, p: Piece, sq: Square) {
-        let mask = 1 << sq.as_u8();
+        let mask = Bitboard::from(sq);
         self.pieces[p as usize] |= mask;
     }
 
     // Flips the bits at the from and to index in the bitmap at index p of self.pieces
     fn move_piece(&mut self, p: Piece, from: Square, to: Square) {
-        let mask = 1 << from.as_u8() | 1 << to.as_u8();
+        let mask = Bitboard::from(from) | Bitboard::from(to);
         self.pieces[p as usize] ^= mask;
     }
 
@@ -317,8 +320,8 @@ impl Board {
         let is_en_passant = flags & EN_PASSANT_FLAG != 0;
         let is_castling = flags & CASTLING_FLAG != 0;
         let is_double_pawn_push = flags & DOUBLE_PAWN_PUSH_FLAG != 0;
-        let mut moving_side_mask = 0u64;
-        let mut opponent_side_mask = 0u64;
+        let mut moving_side_mask = Bitboard(0);
+        let mut opponent_side_mask = Bitboard(0);
         let side_to_move = self.side_to_move;
         let opponent = side_to_move.flip();
 
@@ -326,9 +329,9 @@ impl Board {
         let captured_piece = if is_capture {
             let c_sq = if is_en_passant {
                 if side_to_move == Color::White {
-                    Square::from(mv.to().as_u8() - 8)
+                    Square(mv.to().as_u8() - 8)
                 } else {
-                    Square::from(mv.to().as_u8() + 8)
+                    Square(mv.to().as_u8() + 8)
                 }
             } else {
                 mv.to()
@@ -336,7 +339,7 @@ impl Board {
             let c_p = self.piece_at(c_sq);
             self.remove_piece(c_p, c_sq);
             self.mailbox[c_sq.as_usize()] = Piece::None;
-            let mask = 1u64 << c_sq.as_u8();
+            let mask = Bitboard::from(c_sq);
             opponent_side_mask |= mask;
             hash ^= z.piece_square[c_p as usize][c_sq.as_usize()];
             c_p
@@ -350,7 +353,7 @@ impl Board {
 
         // Move the played piece (plus rook for castling)
         let moved_piece = self.piece_at(mv.from());
-        let moved_mask = (1u64 << mv.from().as_u8()) | (1u64 << mv.to().as_u8());
+        let moved_mask = Bitboard::from(mv.from()) | Bitboard::from(mv.to());
         moving_side_mask |= moved_mask;
         hash ^= z.piece_square[moved_piece as usize][mv.from().as_usize()];
 
@@ -369,10 +372,10 @@ impl Board {
 
             if is_castling {
                 let (rook, rook_from, rook_to) = match mv.to().as_u8() {
-                    62 => (Piece::BR, Square::from(63), Square::from(61)), // black king side
-                    58 => (Piece::BR, Square::from(56), Square::from(59)), // black queen side
-                    6 => (Piece::WR, Square::from(7), Square::from(5)),    // white king side
-                    2 => (Piece::WR, Square::from(0), Square::from(3)),    // white queen side
+                    62 => (Piece::BR, Square(63), Square(61)), // black king side
+                    58 => (Piece::BR, Square(56), Square(59)), // black queen side
+                    6 => (Piece::WR, Square(7), Square(5)),    // white king side
+                    2 => (Piece::WR, Square(0), Square(3)),    // white queen side
                     _ => unreachable!(),
                 };
 
@@ -380,7 +383,7 @@ impl Board {
                 self.mailbox[rook_from.as_usize()] = Piece::None;
                 self.mailbox[rook_to.as_usize()] = rook;
 
-                let rook_mask = (1u64 << rook_from.as_u8()) | (1u64 << rook_to.as_u8());
+                let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
                 moving_side_mask |= rook_mask;
                 hash ^= z.piece_square[rook as usize][rook_from.as_usize()];
                 hash ^= z.piece_square[rook as usize][rook_to.as_usize()];
@@ -397,7 +400,7 @@ impl Board {
             let file = self.en_passant.as_u8() % 8;
             hash ^= z.en_passant[file as usize];
         }
-        self.en_passant = Square::from(if is_double_pawn_push {
+        self.en_passant = Square(if is_double_pawn_push {
             (mv.from().as_u8() + mv.to().as_u8()) / 2
         } else {
             64
@@ -447,11 +450,11 @@ impl Board {
         let is_promotion = flags & PROMOTION_FLAG != 0;
         let is_en_passant = flags & EN_PASSANT_FLAG != 0;
         let is_castling = flags & CASTLING_FLAG != 0;
-        let mut moving_side_mask: u64 = 0;
-        let mut opponent_side_mask: u64 = 0;
+        let mut moving_side_mask = Bitboard(0);
+        let mut opponent_side_mask = Bitboard(0);
 
         // Move back the piece (checking for promotion and castling)
-        moving_side_mask |= (1u64 << mv.to().as_u8()) | (1u64 << mv.from().as_u8());
+        moving_side_mask |= Bitboard::from(mv.to()) | Bitboard::from(mv.from());
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(promotion_piece, mv.to());
@@ -475,10 +478,10 @@ impl Board {
 
             if is_castling {
                 let (rook, rook_from, rook_to) = match mv.to().as_u8() {
-                    62 => (Piece::BR, Square::from(61), Square::from(63)), // black king side
-                    58 => (Piece::BR, Square::from(59), Square::from(56)), // black queen side
-                    6 => (Piece::WR, Square::from(5), Square::from(7)),    // white king side
-                    2 => (Piece::WR, Square::from(3), Square::from(0)),    // white queen side
+                    62 => (Piece::BR, Square(61), Square(63)), // black king side
+                    58 => (Piece::BR, Square(59), Square(56)), // black queen side
+                    6 => (Piece::WR, Square(5), Square(7)),    // white king side
+                    2 => (Piece::WR, Square(3), Square(0)),    // white queen side
                     _ => unreachable!(),
                 };
 
@@ -486,7 +489,7 @@ impl Board {
                 self.mailbox[rook_from.as_usize()] = Piece::None;
                 self.mailbox[rook_to.as_usize()] = rook;
 
-                let rook_mask = (1u64 << rook_from.as_u8()) | (1u64 << rook_to.as_u8());
+                let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
                 moving_side_mask |= rook_mask;
             }
         }
@@ -496,13 +499,13 @@ impl Board {
             let c_p = undo.captured_piece;
             let c_sq = if is_en_passant {
                 match self.side_to_move {
-                    Color::White => Square::from(mv.to().as_u8() - 8),
-                    Color::Black => Square::from(mv.to().as_u8() + 8),
+                    Color::White => Square(mv.to().as_u8() - 8),
+                    Color::Black => Square(mv.to().as_u8() + 8),
                 }
             } else {
                 mv.to()
             };
-            let sq_mask = 1u64 << c_sq.as_u8();
+            let sq_mask = Bitboard::from(c_sq);
             opponent_side_mask |= sq_mask;
             self.add_piece(c_p, c_sq);
             self.mailbox[c_sq.as_usize()] = c_p;
@@ -531,15 +534,15 @@ impl Board {
             .is_some()
     }
 
-    fn bishops_same_color(&self, bishops: u64) -> bool {
-        const LIGHT_SQUARES: u64 = 0x55AA55AA55AA55AA;
-        (bishops & LIGHT_SQUARES) == bishops || (bishops & LIGHT_SQUARES) == 0
+    fn bishops_same_color(&self, bishops: Bitboard) -> bool {
+        const LIGHT_SQUARES: Bitboard = Bitboard(0x55AA55AA55AA55AA);
+        (bishops & LIGHT_SQUARES) == bishops || (bishops & LIGHT_SQUARES).is_empty()
     }
 
-    fn insufficient_minors(&self, knights: u64, bishops: u64) -> bool {
-        if knights != 0 && bishops == 0 {
+    fn insufficient_minors(&self, knights: Bitboard, bishops: Bitboard) -> bool {
+        if !knights.is_empty() && !bishops.is_empty() {
             true
-        } else if bishops != 0 && knights == 0 {
+        } else if !bishops.is_empty() && knights.is_empty() {
             self.bishops_same_color(bishops)
         } else {
             false
@@ -547,13 +550,13 @@ impl Board {
     }
 
     fn is_insufficient_material(&self) -> bool {
-        if (self.pieces[Piece::WP as usize]
+        if !(self.pieces[Piece::WP as usize]
             | self.pieces[Piece::BP as usize]
             | self.pieces[Piece::WR as usize]
             | self.pieces[Piece::BR as usize]
             | self.pieces[Piece::WQ as usize]
             | self.pieces[Piece::BQ as usize])
-            != 0
+            .is_empty()
         {
             return false;
         }
@@ -562,15 +565,15 @@ impl Board {
         let w_bishops = self.pieces[Piece::WB as usize];
         let b_bishops = self.pieces[Piece::BB as usize];
 
-        let white_has_minors = (w_knights | w_bishops) != 0;
-        let black_has_minors = (b_knights | b_bishops) != 0;
+        let white_has_minors = !(w_knights | w_bishops).is_empty();
+        let black_has_minors = !(b_knights | b_bishops).is_empty();
 
         match (white_has_minors, black_has_minors) {
             (false, false) => true,
             (false, true) => self.insufficient_minors(b_knights, b_bishops),
             (true, false) => self.insufficient_minors(w_knights, w_bishops),
             (true, true) => {
-                if (w_knights | b_knights) != 0 {
+                if !(w_knights | b_knights).is_empty() {
                     false
                 } else {
                     let bishops = w_bishops | b_bishops;
@@ -618,10 +621,12 @@ impl Board {
     pub fn is_king_checked(&self) -> bool {
         let attacker_color = self.side_to_move.flip();
         let king_sq = match attacker_color {
-            Color::Black => Square::from(self.pieces[Piece::WK as usize].trailing_zeros() as u8),
-            Color::White => Square::from(self.pieces[Piece::BK as usize].trailing_zeros() as u8),
+            Color::Black => Square(self.pieces[Piece::WK as usize].trailing_zeros()),
+            Color::White => Square(self.pieces[Piece::BK as usize].trailing_zeros()),
         };
-        self.compute_checkers(king_sq, self.occ, attacker_color, &self.pieces) != 0
+        !self
+            .compute_checkers(king_sq, self.occ, attacker_color, &self.pieces)
+            .is_empty()
     }
 
     pub fn material_evaluation(&self) -> isize {

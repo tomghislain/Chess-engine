@@ -48,7 +48,7 @@ pub fn display_board(
         terminal::Clear(terminal::ClearType::All)
     );
     for sq_index in 0..64 {
-        let sq = Square::from(sq_index);
+        let sq = Square(sq_index);
 
         let index = ((sq_index ^ (sq_index >> 3)) & 1) as usize;
         let sq_colors = [DARK_SQUARE_COLOR, LIGHT_SQUARE_COLOR];
@@ -59,7 +59,7 @@ pub fn display_board(
             sq_color = PREVIOUS_MOVE_COLOR;
         }
 
-        if possible_to_squares.contains(&Square::from(sq_index)) {
+        if possible_to_squares.contains(&Square(sq_index)) {
             sq_color = POSSIBLE_SQUARES_COLOR;
         }
 
@@ -70,7 +70,7 @@ pub fn display_board(
         }
 
         let _ = queue!(stdout, crossterm::style::SetBackgroundColor(sq_color),);
-        let piece = board.piece_at(Square::from(sq_index));
+        let piece = board.piece_at(Square(sq_index));
         // TODO: match piece enum with corresponding ascii character
         let pieces_colors = [WHITE_PIECES_COLOR, BLACK_PIECES_COLOR];
         let (piece_string, piece_color) = if piece != Piece::None {
@@ -148,7 +148,7 @@ pub fn get_player_move(
                 if from.is_some() {
                     let valid_moves: Vec<&Move> = moves_from
                         .iter()
-                        .filter(|m| m.to() == Square::from(clicked_sq))
+                        .filter(|m| m.to() == Square(clicked_sq))
                         .collect();
                     let move_number = valid_moves.len();
                     if move_number == 1 {
@@ -166,7 +166,7 @@ pub fn get_player_move(
                         moves_from = moves
                             .iter()
                             .filter_map(|&m| {
-                                if m.from() == Square::from(clicked_sq) {
+                                if m.from() == Square(clicked_sq) {
                                     Some(m)
                                 } else {
                                     None
@@ -179,7 +179,7 @@ pub fn get_player_move(
                     moves_from = moves_from
                         .iter()
                         .filter_map(|&m| {
-                            if m.from() == Square::from(clicked_sq) {
+                            if m.from() == Square(clicked_sq) {
                                 Some(m)
                             } else {
                                 None
