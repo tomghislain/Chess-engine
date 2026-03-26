@@ -60,7 +60,7 @@ impl Tree {
         }
     }
 
-    fn best_ucb_child(&self, parent_index: NodeIndex) -> Option<NodeIndex> {
+    fn best_uct_child(&self, parent_index: NodeIndex) -> Option<NodeIndex> {
         let parent = &self.nodes[parent_index];
         let parent_visits = parent.visits as f32;
 
@@ -73,7 +73,7 @@ impl Tree {
             let uct = if child.visits == 0 {
                 f32::INFINITY
             } else {
-                (1.0 - child.wins / child.visits as f32)
+                (child.wins / child.visits as f32)
                     + c * (parent_visits.ln() / child.visits as f32).sqrt()
             };
 
@@ -91,7 +91,7 @@ impl Tree {
         while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
         {
-            if let Some(best_child_index) = self.best_ucb_child(current) {
+            if let Some(best_child_index) = self.best_uct_child(current) {
                 board.make_move(self.nodes[best_child_index].move_from_parent.unwrap());
                 current = best_child_index;
             } else {
@@ -125,12 +125,12 @@ impl Tree {
             if num_moves == 0 {
                 if board.is_king_checked() {
                     if board.side_to_move != starting_player {
-                        return 1.0; // Checkmate win
-                    } else {
                         return 0.0; // Checkmate loss
+                    } else {
+                        return 1.0; // Checkmate win
                     }
                 } else {
-                    return 0.5; // Stalemate
+                    break;
                 }
             }
             let mv = move_buffer.get(rng.random_range(0..num_moves)).unwrap();
