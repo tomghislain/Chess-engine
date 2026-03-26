@@ -347,14 +347,14 @@ impl Board {
         capture_mask: u64,
         pinned: u64,
     ) {
-        let us = self.side_to_move;
+        let side_to_move = self.side_to_move;
         let mut knights = self.pieces[knight_piece as usize] & !pinned;
         while knights != 0 {
             let from = Square::from(knights.trailing_zeros() as u8);
             knights &= knights - 1;
 
             let mut attacks = KNIGHT_ATTACKS[from.as_usize()]
-                & !self.color_occ[us as usize]
+                & !self.color_occ[side_to_move as usize]
                 & (block_mask | capture_mask);
 
             while attacks != 0 {
@@ -381,7 +381,7 @@ impl Board {
         pinned: u64,
         pin_rays: &[u64; 64],
     ) {
-        let us = self.side_to_move;
+        let side_to_move = self.side_to_move;
         let mut rooks = self.pieces[rook_piece as usize];
         while rooks != 0 {
             let from = Square::from(rooks.trailing_zeros() as u8);
@@ -394,11 +394,11 @@ impl Board {
             let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
                 >> ROOK_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[us as usize]
+                !self.color_occ[side_to_move as usize]
                     & (block_mask | capture_mask)
                     & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[us as usize] & (block_mask | capture_mask)
+                !self.color_occ[side_to_move as usize] & (block_mask | capture_mask)
             };
             let attacks = ROOK_ATTACKS[from.as_usize()][idx] & legal_mask;
 
@@ -426,7 +426,7 @@ impl Board {
         pinned: u64,
         pin_rays: &[u64; 64],
     ) {
-        let us = self.side_to_move;
+        let side_to_move = self.side_to_move;
         let mut bishops = self.pieces[bishop_piece as usize];
         while bishops != 0 {
             let from = Square::from(bishops.trailing_zeros() as u8);
@@ -439,11 +439,11 @@ impl Board {
             let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
                 >> BISHOP_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[us as usize]
+                !self.color_occ[side_to_move as usize]
                     & (block_mask | capture_mask)
                     & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[us as usize] & (block_mask | capture_mask)
+                !self.color_occ[side_to_move as usize] & (block_mask | capture_mask)
             };
             let attacks = BISHOP_ATTACKS[from.as_usize()][idx] & legal_mask;
 
@@ -471,7 +471,7 @@ impl Board {
         pinned: u64,
         pin_rays: &[u64; 64],
     ) {
-        let us = self.side_to_move;
+        let side_to_move = self.side_to_move;
         let mut queens = self.pieces[queen_piece as usize];
         while queens != 0 {
             let from = Square::from(queens.trailing_zeros() as u8);
@@ -492,11 +492,11 @@ impl Board {
             let diag_attacks = BISHOP_ATTACKS[from.as_usize()][diag_idx];
 
             let legal_mask = if is_pinned {
-                !self.color_occ[us as usize]
+                !self.color_occ[side_to_move as usize]
                     & (block_mask | capture_mask)
                     & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[us as usize] & (block_mask | capture_mask)
+                !self.color_occ[side_to_move as usize] & (block_mask | capture_mask)
             };
 
             let attacks = (orth_attacks | diag_attacks) & legal_mask;
@@ -578,9 +578,10 @@ impl Board {
     }
 
     fn get_king_moves(&self, moves: &mut MoveList, king_sq: Square, danger_mask: u64) {
-        let us = self.side_to_move;
-        let mut attacks =
-            KING_ATTACKS[king_sq.as_usize()] & !self.color_occ[us as usize] & !danger_mask;
+        let side_to_move = self.side_to_move;
+        let mut attacks = KING_ATTACKS[king_sq.as_usize()]
+            & !self.color_occ[side_to_move as usize]
+            & !danger_mask;
         while attacks != 0 {
             let to = Square::from(attacks.trailing_zeros() as u8);
             attacks &= attacks - 1;
@@ -817,10 +818,10 @@ impl Board {
 
     pub fn get_legal_moves(&self, moves: &mut MoveList) {
         moves.clear();
-        let us = self.side_to_move;
+        let side_to_move = self.side_to_move;
 
         let king_sq = Square::from(
-            self.pieces[if us == Color::White {
+            self.pieces[if side_to_move == Color::White {
                 Piece::WK
             } else {
                 Piece::BK
@@ -833,7 +834,7 @@ impl Board {
 
         self.get_king_moves(moves, king_sq, king_danger_mask);
         let checkers: u64 =
-            self.compute_checkers(king_sq, self.occ, self.side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
+            self.compute_checkers(king_sq, self.occ, side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
 
         if checkers.count_ones() > 1 {
             return; // If it is a double check, only king moves can be legal

@@ -319,12 +319,13 @@ impl Board {
         let is_double_pawn_push = flags & DOUBLE_PAWN_PUSH_FLAG != 0;
         let mut moving_side_mask = 0u64;
         let mut opponent_side_mask = 0u64;
-        let us = self.side_to_move;
+        let side_to_move = self.side_to_move;
+        let opponent = side_to_move.flip();
 
         // Remove piece if capture
         let captured_piece = if is_capture {
             let c_sq = if is_en_passant {
-                if us == Color::White {
+                if side_to_move == Color::White {
                     Square::from(mv.to().as_u8() - 8)
                 } else {
                     Square::from(mv.to().as_u8() + 8)
@@ -388,8 +389,8 @@ impl Board {
 
         // Update occupancy
         self.occ ^= moving_side_mask ^ opponent_side_mask;
-        self.color_occ[self.side_to_move as usize] ^= moving_side_mask;
-        self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
+        self.color_occ[side_to_move as usize] ^= moving_side_mask;
+        self.color_occ[opponent as usize] ^= opponent_side_mask;
 
         // Update en passant square
         if self.en_passant.as_u8() < 64 {
@@ -423,7 +424,7 @@ impl Board {
         };
 
         // Update side_to_move
-        self.side_to_move = self.side_to_move.flip();
+        self.side_to_move = opponent;
         hash ^= z.side;
 
         // Update hash
