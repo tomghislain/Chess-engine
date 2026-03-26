@@ -10,23 +10,23 @@ enum TTFlag {
 struct TTEntry {
     hash: u64,
     depth: u8,
-    score: i8,
+    score: isize,
     flag: TTFlag,
 }
 
 type TranspositionTable = HashMap<u64, TTEntry>;
 
-fn evaluate(_board: &Board) -> i8 {
-    1 // TODO: return material value
+fn evaluate(board: &Board) -> isize {
+    board.material_evaluation()
 }
 
 fn negamax(
     board: &mut Board,
     depth: u8,
-    mut alpha: i8,
-    mut beta: i8,
+    mut alpha: isize,
+    mut beta: isize,
     tt: &mut TranspositionTable,
-) -> i8 {
+) -> isize {
     let original_alpha = alpha;
     let hash = board.zobrist;
 
@@ -45,6 +45,10 @@ fn negamax(
         }
     }
 
+    if board.is_draw() {
+        return 0;
+    }
+
     if depth == 0 {
         return evaluate(board);
     }
@@ -52,10 +56,14 @@ fn negamax(
     let mut moves = MoveList::new();
     board.get_legal_moves(&mut moves);
     if moves.count == 0 {
-        return evaluate(board);
+        if board.is_king_checked() {
+            return -10000 + depth as isize;
+        } else {
+            return 0;
+        }
     }
 
-    let mut best_score = i8::MIN;
+    let mut best_score = isize::MIN;
 
     for mv in moves.iter() {
         board.make_move(*mv);
@@ -98,9 +106,9 @@ pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
         return None;
     }
     let mut tt = TranspositionTable::new();
-    let alpha = i8::MIN;
-    let beta = i8::MAX;
-    let mut best_score = i8::MIN;
+    let alpha = isize::MIN;
+    let beta = isize::MAX;
+    let mut best_score = isize::MIN;
     let mut best_move = None;
 
     for mv in moves.iter() {

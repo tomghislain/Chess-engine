@@ -622,4 +622,25 @@ impl Board {
         };
         self.compute_checkers(king_sq, self.occ, attacker_color, &self.pieces) != 0
     }
+
+    pub fn material_evaluation(&self) -> isize {
+        let mut score = 0;
+        score += 100 * self.pieces[Piece::WP as usize].count_ones() as isize;
+        score += 350 * self.pieces[Piece::WN as usize].count_ones() as isize;
+        score += 350 * self.pieces[Piece::WB as usize].count_ones() as isize;
+        score += 525 * self.pieces[Piece::WR as usize].count_ones() as isize;
+        score += 1000 * self.pieces[Piece::WQ as usize].count_ones() as isize;
+
+        score -= 100 * self.pieces[Piece::BP as usize].count_ones() as isize;
+        score -= 350 * self.pieces[Piece::BN as usize].count_ones() as isize;
+        score -= 350 * self.pieces[Piece::BB as usize].count_ones() as isize;
+        score -= 525 * self.pieces[Piece::BR as usize].count_ones() as isize;
+        score -= 1000 * self.pieces[Piece::BQ as usize].count_ones() as isize;
+
+        if self.side_to_move == Color::White {
+            score
+        } else {
+            -score
+        }
+    }
 }
