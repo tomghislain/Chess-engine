@@ -100,8 +100,8 @@ impl Board {
         }
 
         // En passant
-        if self.en_passant.as_u8() < 64 {
-            let en_passant_mask = Bitboard::from(self.en_passant);
+        if self.en_passant().as_u8() < 64 {
+            let en_passant_mask = Bitboard::from(self.en_passant());
             let left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
             for to in left_en_passant {
                 let from = Square(to.as_u8() - 7);
@@ -253,8 +253,8 @@ impl Board {
         }
 
         // En passant
-        if self.en_passant.as_u8() < 64 {
-            let en_passant_mask = Bitboard::from(self.en_passant);
+        if self.en_passant().as_u8() < 64 {
+            let en_passant_mask = Bitboard::from(self.en_passant());
             let left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
             for to in left_en_passant {
                 let from = Square(to.as_u8() + 7);
@@ -622,7 +622,7 @@ impl Board {
     }
 
     fn gen_castling_moves(&self, moves: &mut MoveList, king_danger_squares: Bitboard) {
-        let castling_rights = self.castling;
+        let castling_rights = self.castling();
         match self.side_to_move {
             Color::White => {
                 if castling_rights & WK_CASTLE != 0

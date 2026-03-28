@@ -72,13 +72,14 @@ const CASTLING_UPDATE: [u8; 64] = [
     !BK_CASTLE,
 ];
 
-#[derive(Clone)]
-pub struct Undo {
+const MAX_GAME_LENGTH: usize = 1024;
+
+#[derive(Clone, Copy)]
+pub struct State {
     pub captured_piece: Piece,
     pub castling: u8,
     pub en_passant: Square,
     pub halfmove_clock: u8,
-    pub zobrist: u64,
 }
 
 #[derive(Clone)]
@@ -89,27 +90,40 @@ pub struct Board {
     pub occ: Bitboard,
 
     pub side_to_move: Color,
-    pub castling: u8,
-    pub en_passant: Square,
-    pub halfmove_clock: u8,
-    pub zobrist: u64,
 
-    pub history: Vec<u64>,
-    pub undo_stack: Vec<Undo>,
+    pub history: [u64; MAX_GAME_LENGTH],
+    pub state_stack: [State; MAX_GAME_LENGTH],
+    pub ply: usize,
 }
 
-impl Undo {
-    pub fn new(board: &Board, captured_piece: Piece) -> Self {
-        Undo {
+impl State {
+    pub fn new(
+        captured_piece: Piece,
+        castling: u8,
+        en_passant: Square,
+        halfmove_clock: u8,
+    ) -> Self {
+        State {
             captured_piece,
-            castling: board.castling,
-            en_passant: board.en_passant,
-            halfmove_clock: board.halfmove_clock,
-            zobrist: board.zobrist,
+            castling,
+            en_passant,
+            halfmove_clock,
         }
     }
 }
 impl Board {
+    pub fn castling(&self) -> u8 {
+        self.state_stack[self.ply].castling
+    }
+    pub fn en_passant(&self) -> Square {
+        self.state_stack[self.ply].en_passant
+    }
+    pub fn zobrist(&self) -> u64 {
+        self.history[self.ply]
+    }
+    fn halfmove_clock(&self) -> u8 {
+        self.state_stack[self.ply].halfmove_clock
+    }
     fn compute_zobrist(&self) -> u64 {
         let z = zobrist::zobrist();
         let mut hash = 0;
@@ -129,11 +143,11 @@ impl Board {
         }
 
         // Castling rights
-        hash ^= z.castling[self.castling as usize];
+        hash ^= z.castling[self.castling() as usize];
 
         // En passant
-        if self.en_passant.as_u8() < 64 {
-            let file = self.en_passant.as_u8() % 8;
+        if self.en_passant().as_u8() < 64 {
+            let file = self.en_passant().as_u8() % 8;
             hash ^= z.en_passant[file as usize];
         }
 
@@ -262,12 +276,15 @@ impl Board {
         let side_to_move = Color::White;
 
         let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
-
         let en_passant = Square(64);
         let halfmove_clock = 0;
         let zobrist = 0;
-        let history = Vec::with_capacity(256);
-        let undo_stack = Vec::with_capacity(256);
+
+        let history = [zobrist; MAX_GAME_LENGTH];
+        let state = State::new(Piece::None, castling, en_passant, halfmove_clock);
+        let state_stack = [state; MAX_GAME_LENGTH];
+
+        let ply = 0;
 
         let mut board = Board {
             pieces,
@@ -275,16 +292,13 @@ impl Board {
             color_occ,
             occ,
             side_to_move,
-            castling,
-            en_passant,
-            halfmove_clock,
-            zobrist,
             history,
-            undo_stack,
+            state_stack,
+            ply,
         };
 
-        board.zobrist = board.compute_zobrist();
-        board.history.push(board.zobrist);
+        let zobrist = board.compute_zobrist();
+        board.history[ply] = zobrist;
         board
     }
     pub fn piece_at(&self, sq: Square) -> Piece {
@@ -311,8 +325,9 @@ impl Board {
 
     pub fn make_move(&mut self, mv: Move) {
         let z = zobrist::zobrist();
-        let old_hash = self.zobrist;
-        let mut hash = old_hash;
+        let mut new_hash = self.zobrist();
+        let mut new_castling = self.castling();
+        let mut new_halfmove_clock = self.halfmove_clock();
 
         let flags = mv.flags();
         let is_capture = flags & CAPTURE_FLAG != 0;
@@ -341,21 +356,17 @@ impl Board {
             self.mailbox[c_sq.as_usize()] = Piece::None;
             let mask = Bitboard::from(c_sq);
             opponent_side_mask |= mask;
-            hash ^= z.piece_square[c_p as usize][c_sq.as_usize()];
+            new_hash ^= z.piece_square[c_p as usize][c_sq.as_usize()];
             c_p
         } else {
             Piece::None
         };
 
-        // Save undo information
-        let undo = Undo::new(self, captured_piece);
-        self.undo_stack.push(undo);
-
         // Move the played piece (plus rook for castling)
         let moved_piece = self.piece_at(mv.from());
         let moved_mask = Bitboard::from(mv.from()) | Bitboard::from(mv.to());
         moving_side_mask |= moved_mask;
-        hash ^= z.piece_square[moved_piece as usize][mv.from().as_usize()];
+        new_hash ^= z.piece_square[moved_piece as usize][mv.from().as_usize()];
 
         if is_promotion {
             let promotion_piece = mv.promotion();
@@ -363,12 +374,12 @@ impl Board {
             self.mailbox[mv.from().as_usize()] = Piece::None;
             self.add_piece(promotion_piece, mv.to());
             self.mailbox[mv.to().as_usize()] = promotion_piece;
-            hash ^= z.piece_square[promotion_piece as usize][mv.to().as_usize()];
+            new_hash ^= z.piece_square[promotion_piece as usize][mv.to().as_usize()];
         } else {
             self.move_piece(moved_piece, mv.from(), mv.to());
             self.mailbox[mv.from().as_usize()] = Piece::None;
             self.mailbox[mv.to().as_usize()] = moved_piece;
-            hash ^= z.piece_square[moved_piece as usize][mv.to().as_usize()];
+            new_hash ^= z.piece_square[moved_piece as usize][mv.to().as_usize()];
 
             if is_castling {
                 let (rook, rook_from, rook_to) = match mv.to().as_u8() {
@@ -385,8 +396,8 @@ impl Board {
 
                 let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
                 moving_side_mask |= rook_mask;
-                hash ^= z.piece_square[rook as usize][rook_from.as_usize()];
-                hash ^= z.piece_square[rook as usize][rook_to.as_usize()];
+                new_hash ^= z.piece_square[rook as usize][rook_from.as_usize()];
+                new_hash ^= z.piece_square[rook as usize][rook_to.as_usize()];
             }
         }
 
@@ -396,53 +407,55 @@ impl Board {
         self.color_occ[opponent as usize] ^= opponent_side_mask;
 
         // Update en passant square
-        if self.en_passant.as_u8() < 64 {
-            let file = self.en_passant.as_u8() % 8;
-            hash ^= z.en_passant[file as usize];
+        if self.en_passant().as_u8() < 64 {
+            let file = self.en_passant().as_u8() % 8;
+            new_hash ^= z.en_passant[file as usize];
         }
-        self.en_passant = Square(if is_double_pawn_push {
+        let new_en_passant = Square(if is_double_pawn_push {
             (mv.from().as_u8() + mv.to().as_u8()) / 2
         } else {
             64
         });
-        if self.en_passant.as_u8() < 64 {
-            let file = self.en_passant.as_u8() % 8;
-            hash ^= z.en_passant[file as usize];
+        if new_en_passant.as_u8() < 64 {
+            let file = new_en_passant.as_u8() % 8;
+            new_hash ^= z.en_passant[file as usize];
         }
 
         // Update castling rights
-        hash ^= z.castling[self.castling as usize];
+        new_hash ^= z.castling[self.castling() as usize];
 
-        self.castling &= CASTLING_UPDATE[mv.from().as_usize()];
-        self.castling &= CASTLING_UPDATE[mv.to().as_usize()];
+        new_castling &= CASTLING_UPDATE[mv.from().as_usize()];
+        new_castling &= CASTLING_UPDATE[mv.to().as_usize()];
 
-        hash ^= z.castling[self.castling as usize];
+        new_hash ^= z.castling[new_castling as usize];
 
         // Update halfmove clock
         let is_pawn_move = is_double_pawn_push || matches!(moved_piece, Piece::WP | Piece::BP);
-        self.halfmove_clock = if is_capture || is_pawn_move {
+        new_halfmove_clock = if is_capture || is_pawn_move {
             0
         } else {
-            self.halfmove_clock + 1
+            new_halfmove_clock + 1
         };
 
         // Update side_to_move
         self.side_to_move = opponent;
-        hash ^= z.side;
+        new_hash ^= z.side;
 
-        // Update hash
-        self.zobrist = hash;
-        self.history.push(self.zobrist);
+        self.ply += 1;
+        self.history[self.ply] = new_hash;
+        let new_state = State::new(
+            captured_piece,
+            new_castling,
+            new_en_passant,
+            new_halfmove_clock,
+        );
+        self.state_stack[self.ply] = new_state;
     }
 
     pub fn unmake_move(&mut self, mv: Move) {
         // Pop undo stack and restore previous state
-        let undo = self.undo_stack.pop().unwrap();
-        self.castling = undo.castling;
-        self.en_passant = undo.en_passant;
-        self.halfmove_clock = undo.halfmove_clock;
-        self.zobrist = undo.zobrist;
-        self.history.pop();
+        let captured_piece = self.state_stack[self.ply].captured_piece;
+        self.ply -= 1;
         self.side_to_move = self.side_to_move.flip();
 
         let flags = mv.flags();
@@ -496,7 +509,7 @@ impl Board {
 
         // In case of capture (and maybe en passant), restore the taken piece
         if is_capture {
-            let c_p = undo.captured_piece;
+            let c_p = captured_piece;
             let c_sq = if is_en_passant {
                 match self.side_to_move {
                     Color::White => Square(mv.to().as_u8() - 8),
@@ -518,20 +531,19 @@ impl Board {
     }
 
     fn is_50_move_draw(&self) -> bool {
-        self.halfmove_clock >= 100
+        self.halfmove_clock() >= 100
     }
 
     fn is_threefold_repetition(&self) -> bool {
-        let current = self.zobrist;
-        let limit = self.halfmove_clock as usize / 2;
-        self.history
+        let current = self.zobrist();
+        let start = self.ply.saturating_sub(self.halfmove_clock() as usize);
+        self.history[start..self.ply]
             .iter()
             .rev()
             .step_by(2)
-            .take(limit)
             .filter(|&&h| h == current)
-            .nth(2)
-            .is_some()
+            .count()
+            >= 2
     }
 
     fn bishops_same_color(&self, bishops: Bitboard) -> bool {

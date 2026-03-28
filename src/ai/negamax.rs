@@ -28,7 +28,7 @@ fn negamax(
     tt: &mut TranspositionTable,
 ) -> isize {
     let original_alpha = alpha;
-    let hash = board.zobrist;
+    let hash = board.zobrist();
 
     // Check transposition table
     if let Some(entry) = tt.get(&hash)
