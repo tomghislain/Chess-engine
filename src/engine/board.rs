@@ -631,14 +631,12 @@ impl Board {
     }
 
     pub fn is_king_checked(&self) -> bool {
-        let attacker_color = self.side_to_move.flip();
-        let king_sq = match attacker_color {
+        let attacker = self.side_to_move.flip();
+        let king_sq = match attacker {
             Color::Black => Square(self.pieces[Piece::WK as usize].trailing_zeros()),
             Color::White => Square(self.pieces[Piece::BK as usize].trailing_zeros()),
         };
-        !self
-            .compute_checkers(king_sq, self.occ, attacker_color, &self.pieces)
-            .is_empty()
+        self.is_square_attacked(king_sq, attacker)
     }
 
     pub fn material_evaluation(&self) -> isize {

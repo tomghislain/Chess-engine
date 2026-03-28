@@ -798,4 +798,66 @@ impl Board {
 
         self.get_non_king_moves(moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep
     }
+
+    pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
+        let sq_usize = sq.as_usize();
+        let (pawn, pawn_table, knight, bishop, rook, queen, king) = match attacker {
+            Color::White => (
+                Piece::WP,
+                BLACK_PAWN_ATTACKS,
+                Piece::WN,
+                Piece::WB,
+                Piece::WR,
+                Piece::WQ,
+                Piece::WK,
+            ),
+            Color::Black => (
+                Piece::BP,
+                WHITE_PAWN_ATTACKS,
+                Piece::BN,
+                Piece::BB,
+                Piece::BR,
+                Piece::BQ,
+                Piece::BK,
+            ),
+        };
+
+        if !(pawn_table[sq_usize] & self.pieces[pawn as usize]).is_empty() {
+            return true;
+        }
+
+        if !(KNIGHT_ATTACKS[sq_usize] & self.pieces[knight as usize]).is_empty() {
+            return true;
+        }
+
+        let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
+        if !diag_attackers.is_empty() {
+            let diag_mask = BISHOP_MASKS[sq_usize];
+            let diag_blockers = self.occ & diag_mask;
+            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize])
+                >> BISHOP_SHIFTS[sq_usize]) as usize;
+            let diag_attacks = BISHOP_ATTACKS[sq_usize][diag_idx];
+            if !(diag_attacks & diag_attackers).is_empty() {
+                return true;
+            }
+        }
+
+        let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
+        if !orth_attackers.is_empty() {
+            let orth_mask = ROOK_MASKS[sq_usize];
+            let orth_blockers = self.occ & orth_mask;
+            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize])
+                >> ROOK_SHIFTS[sq_usize]) as usize;
+            let orth_attacks = ROOK_ATTACKS[sq_usize][orth_idx];
+            if !(orth_attacks & orth_attackers).is_empty() {
+                return true;
+            }
+        }
+
+        if !(KING_ATTACKS[sq_usize] & self.pieces[king as usize]).is_empty() {
+            return true;
+        }
+
+        false
+    }
 }
