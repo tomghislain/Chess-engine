@@ -6,8 +6,7 @@ impl Board {
     fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
         moves: &mut MoveList,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
+        legal_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
@@ -39,9 +38,9 @@ impl Board {
         let pinned_pawns = non_promotion_pawns & pinned;
         // Free
         let single_push = if IS_WHITE {
-            (free_pawns << 8) & empty & block_mask
+            (free_pawns << 8) & empty & legal_mask
         } else {
-            (free_pawns >> 8) & empty & block_mask
+            (free_pawns >> 8) & empty & legal_mask
         };
         for to in single_push {
             let from = if IS_WHITE {
@@ -52,9 +51,9 @@ impl Board {
             moves.push(Move::new(from, to, Piece::None, 0));
         }
         let double_push = if IS_WHITE {
-            ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & block_mask
+            ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & legal_mask
         } else {
-            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & empty & block_mask
+            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & empty & legal_mask
         };
         for to in double_push {
             let from = if IS_WHITE {
@@ -68,11 +67,11 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & capture_mask
+                    & legal_mask
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & capture_mask
+                    & legal_mask
             };
             for to in attacks {
                 moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
@@ -83,17 +82,17 @@ impl Board {
             let ray = pin_rays[from.as_usize()];
             let from_bb = Bitboard::from(from);
             let single_push = if IS_WHITE {
-                (from_bb << 8) & empty & block_mask & ray
+                (from_bb << 8) & empty & legal_mask & ray
             } else {
-                (from_bb >> 8) & empty & block_mask & ray
+                (from_bb >> 8) & empty & legal_mask & ray
             };
             for to in single_push {
                 moves.push(Move::new(from, to, Piece::None, 0));
             }
             let double_push = if IS_WHITE {
-                ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & block_mask & ray
+                ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & legal_mask & ray
             } else {
-                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & block_mask & ray
+                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & legal_mask & ray
             };
             for to in double_push {
                 moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
@@ -101,12 +100,12 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & capture_mask
+                    & legal_mask
                     & ray
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & capture_mask
+                    & legal_mask
                     & ray
             };
             for to in attacks {
@@ -119,9 +118,9 @@ impl Board {
         let pinned_pawns = promotion_pawns & pinned;
         // Free
         let single_push = if IS_WHITE {
-            (free_pawns << 8) & empty & block_mask
+            (free_pawns << 8) & empty & legal_mask
         } else {
-            (free_pawns >> 8) & empty & block_mask
+            (free_pawns >> 8) & empty & legal_mask
         };
         for to in single_push {
             let from = if IS_WHITE {
@@ -137,11 +136,11 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & capture_mask
+                    & legal_mask
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & capture_mask
+                    & legal_mask
             };
             for to in attacks {
                 for piece in promotion_pieces {
@@ -155,12 +154,12 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & capture_mask
+                    & legal_mask
                     & ray
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & capture_mask
+                    & legal_mask
                     & ray
             };
             for to in attacks {
@@ -213,8 +212,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         knight_piece: Piece,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
+        legal_mask: Bitboard,
         pinned: Bitboard,
     ) {
         let side_to_move = self.side_to_move;
@@ -222,7 +220,7 @@ impl Board {
         for from in knights {
             let attacks = KNIGHT_ATTACKS[from.as_usize()]
                 & !self.color_occ[side_to_move as usize]
-                & (block_mask | capture_mask);
+                & legal_mask;
 
             for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
@@ -240,8 +238,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         rook_piece: Piece,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
+        legal_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
@@ -255,16 +252,13 @@ impl Board {
             let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
                 >> ROOK_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize]
-                    & (block_mask | capture_mask)
-                    & pin_rays[from.as_usize()]
+                !self.color_occ[side_to_move as usize] & legal_mask & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[side_to_move as usize] & (block_mask | capture_mask)
+                !self.color_occ[side_to_move as usize] & legal_mask
             };
             let attacks = ROOK_ATTACKS[from.as_usize()][idx] & legal_mask;
 
-            let remaining = attacks;
-            for to in remaining {
+            for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -279,8 +273,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         bishop_piece: Piece,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
+        legal_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
@@ -294,16 +287,13 @@ impl Board {
             let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
                 >> BISHOP_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize]
-                    & (block_mask | capture_mask)
-                    & pin_rays[from.as_usize()]
+                !self.color_occ[side_to_move as usize] & legal_mask & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[side_to_move as usize] & (block_mask | capture_mask)
+                !self.color_occ[side_to_move as usize] & legal_mask
             };
             let attacks = BISHOP_ATTACKS[from.as_usize()][idx] & legal_mask;
 
-            let remaining = attacks;
-            for to in remaining {
+            for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -318,8 +308,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         queen_piece: Piece,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
+        legal_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
@@ -341,17 +330,14 @@ impl Board {
             let diag_attacks = BISHOP_ATTACKS[from.as_usize()][diag_idx];
 
             let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize]
-                    & (block_mask | capture_mask)
-                    & pin_rays[from.as_usize()]
+                !self.color_occ[side_to_move as usize] & legal_mask & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[side_to_move as usize] & (block_mask | capture_mask)
+                !self.color_occ[side_to_move as usize] & legal_mask
             };
 
             let attacks = (orth_attacks | diag_attacks) & legal_mask;
 
-            let remaining = attacks;
-            for to in remaining {
+            for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
                     0
                 } else {
@@ -364,29 +350,31 @@ impl Board {
 
     fn compute_danger(&self, king_sq: Square) -> Bitboard {
         let mut danger = Bitboard(0);
-        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces, enemy_king) =
-            match self.side_to_move {
-                Color::White => (
-                    self.pieces[Piece::BP as usize],
-                    BLACK_PAWN_ATTACKS,
-                    self.pieces[Piece::BN as usize],
-                    self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
-                    self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
-                    self.pieces[Piece::BK as usize],
-                ),
-                Color::Black => (
-                    self.pieces[Piece::WP as usize],
-                    WHITE_PAWN_ATTACKS,
-                    self.pieces[Piece::WN as usize],
-                    self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
-                    self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
-                    self.pieces[Piece::WK as usize],
-                ),
-            };
+        let (pawn_attacks, knights, orth_pieces, diag_pieces, enemy_king) = match self.side_to_move
+        {
+            Color::White => (
+                {
+                    let pawns = self.pieces[Piece::BP as usize];
+                    ((pawns >> 7) & !FILE_A) | ((pawns >> 9) & !FILE_H)
+                },
+                self.pieces[Piece::BN as usize],
+                self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BK as usize],
+            ),
+            Color::Black => (
+                {
+                    let pawns = self.pieces[Piece::WP as usize];
+                    ((pawns << 7) & !FILE_H) | ((pawns << 9) & !FILE_A)
+                },
+                self.pieces[Piece::WN as usize],
+                self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WK as usize],
+            ),
+        };
         let kingless_occ = self.occ & !Bitboard::from(king_sq);
-        for sq in pawns {
-            danger |= pawn_attack_table[sq.as_usize()];
-        }
+        danger |= pawn_attacks;
         for sq in knights {
             danger |= KNIGHT_ATTACKS[sq.as_usize()];
         }
@@ -593,82 +581,25 @@ impl Board {
     fn get_non_king_moves(
         &self,
         moves: &mut MoveList,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
+        legal_mask: Bitboard,
         pinned: Bitboard,
-        pin_rays: [Bitboard; 64],
+        pin_rays: &[Bitboard; 64],
         king_sq: Square,
     ) {
         match self.side_to_move {
             Color::White => {
-                self.get_pawn_moves::<true>(
-                    moves,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                    king_sq,
-                );
-                self.get_knight_moves(moves, Piece::WN, block_mask, capture_mask, pinned);
-                self.get_rook_moves(
-                    moves,
-                    Piece::WR,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                );
-                self.get_bishop_moves(
-                    moves,
-                    Piece::WB,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                );
-                self.get_queen_moves(
-                    moves,
-                    Piece::WQ,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                );
+                self.get_pawn_moves::<true>(moves, legal_mask, pinned, pin_rays, king_sq);
+                self.get_knight_moves(moves, Piece::WN, legal_mask, pinned);
+                self.get_rook_moves(moves, Piece::WR, legal_mask, pinned, pin_rays);
+                self.get_bishop_moves(moves, Piece::WB, legal_mask, pinned, pin_rays);
+                self.get_queen_moves(moves, Piece::WQ, legal_mask, pinned, pin_rays);
             }
             Color::Black => {
-                self.get_pawn_moves::<false>(
-                    moves,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                    king_sq,
-                );
-                self.get_knight_moves(moves, Piece::BN, block_mask, capture_mask, pinned);
-                self.get_rook_moves(
-                    moves,
-                    Piece::BR,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                );
-                self.get_bishop_moves(
-                    moves,
-                    Piece::BB,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                );
-                self.get_queen_moves(
-                    moves,
-                    Piece::BQ,
-                    block_mask,
-                    capture_mask,
-                    pinned,
-                    &pin_rays,
-                );
+                self.get_pawn_moves::<false>(moves, legal_mask, pinned, pin_rays, king_sq);
+                self.get_knight_moves(moves, Piece::BN, legal_mask, pinned);
+                self.get_rook_moves(moves, Piece::BR, legal_mask, pinned, pin_rays);
+                self.get_bishop_moves(moves, Piece::BB, legal_mask, pinned, pin_rays);
+                self.get_queen_moves(moves, Piece::BQ, legal_mask, pinned, pin_rays);
             }
         }
     }
@@ -703,14 +634,14 @@ impl Board {
 
         let in_check = !checkers.is_empty();
         // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
-        let (block_mask, capture_mask) = if in_check {
-            (self.compute_block_mask(king_sq, checkers), checkers)
+        let legal_mask = if in_check {
+            self.compute_block_mask(king_sq, checkers) | checkers
         } else {
             self.gen_castling_moves(moves, king_danger_mask); // Castling moves can only happen when not in check
-            (!Bitboard(0), !Bitboard(0)) // All squares are valid to move to and capture on if not check are in place (except for pins)
+            !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
-        self.get_non_king_moves(moves, block_mask, capture_mask, pinned, pin_rays, king_sq); // Careful for ep
+        self.get_non_king_moves(moves, legal_mask, pinned, &pin_rays, king_sq);
     }
 
     pub fn is_square_attacked(
