@@ -63,19 +63,38 @@ impl Board {
             };
             moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
         }
-        for from in free_pawns {
-            let attacks = if IS_WHITE {
-                WHITE_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::Black as usize]
-                    & move_mask
+        let enemy_occ = if IS_WHITE {
+            self.color_occ[Color::Black as usize]
+        } else {
+            self.color_occ[Color::White as usize]
+        };
+
+        let left_captures = if IS_WHITE {
+            (free_pawns << 7) & !FILE_H & enemy_occ & move_mask
+        } else {
+            (free_pawns >> 7) & !FILE_A & enemy_occ & move_mask
+        };
+        for to in left_captures {
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 7)
             } else {
-                BLACK_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::White as usize]
-                    & move_mask
+                Square(to.as_u8() + 7)
             };
-            for to in attacks {
-                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
-            }
+            moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+        }
+
+        let right_captures = if IS_WHITE {
+            (free_pawns << 9) & !FILE_A & enemy_occ & move_mask
+        } else {
+            (free_pawns >> 9) & !FILE_H & enemy_occ & move_mask
+        };
+        for to in right_captures {
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 9)
+            } else {
+                Square(to.as_u8() + 9)
+            };
+            moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
         }
         // Pinned
         for from in pinned_pawns {
@@ -132,20 +151,33 @@ impl Board {
                 moves.push(Move::new(from, to, piece, PROMOTION_FLAG));
             }
         }
-        for from in free_pawns {
-            let attacks = if IS_WHITE {
-                WHITE_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::Black as usize]
-                    & move_mask
+        let left_captures = if IS_WHITE {
+            (free_pawns << 7) & !FILE_H & enemy_occ & move_mask
+        } else {
+            (free_pawns >> 7) & !FILE_A & enemy_occ & move_mask
+        };
+        for to in left_captures {
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 7)
             } else {
-                BLACK_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::White as usize]
-                    & move_mask
+                Square(to.as_u8() + 7)
             };
-            for to in attacks {
-                for piece in promotion_pieces {
-                    moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
-                }
+            moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+        }
+
+        let right_captures = if IS_WHITE {
+            (free_pawns << 9) & !FILE_A & enemy_occ & move_mask
+        } else {
+            (free_pawns >> 9) & !FILE_H & enemy_occ & move_mask
+        };
+        for to in right_captures {
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 9)
+            } else {
+                Square(to.as_u8() + 9)
+            };
+            for piece in promotion_pieces {
+                moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
             }
         }
         // Pinned
