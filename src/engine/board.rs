@@ -636,7 +636,7 @@ impl Board {
             Color::Black => Square(self.pieces[Piece::WK as usize].trailing_zeros()),
             Color::White => Square(self.pieces[Piece::BK as usize].trailing_zeros()),
         };
-        self.is_square_attacked(king_sq, attacker)
+        self.is_square_attacked(king_sq, attacker, self.occ, &self.pieces)
     }
 
     pub fn material_evaluation(&self) -> isize {

@@ -10,6 +10,7 @@ impl Board {
         capture_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
+        king_sq: Square,
     ) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
@@ -111,15 +112,10 @@ impl Board {
                     ^ (Bitboard::from(captured_sq))
                     ^ (Bitboard::from(to));
                 let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::WP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
                 changed_pieces[Piece::BP as usize] ^= Bitboard::from(captured_sq);
-                changed_pieces[Piece::WP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
-                let checkers = self.compute_checkers(
-                    Square(self.pieces[Piece::WK as usize].trailing_zeros()),
-                    changed_occ,
-                    Color::Black,
-                    &changed_pieces,
-                );
-                if checkers.is_empty() {
+
+                if !self.is_square_attacked(king_sq, Color::Black, changed_occ, &changed_pieces) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -137,15 +133,10 @@ impl Board {
                     ^ Bitboard::from(captured_sq)
                     ^ Bitboard::from(to);
                 let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::WP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
                 changed_pieces[Piece::BP as usize] ^= Bitboard::from(captured_sq);
-                changed_pieces[Piece::WP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
-                let checkers = self.compute_checkers(
-                    Square(self.pieces[Piece::WK as usize].trailing_zeros()),
-                    changed_occ,
-                    Color::Black,
-                    &changed_pieces,
-                );
-                if checkers.is_empty() {
+
+                if !self.is_square_attacked(king_sq, Color::Black, changed_occ, &changed_pieces) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -164,6 +155,7 @@ impl Board {
         capture_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
+        king_sq: Square,
     ) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
@@ -263,16 +255,12 @@ impl Board {
                     ^ Bitboard::from(from)
                     ^ Bitboard::from(captured_sq)
                     ^ Bitboard::from(to);
+
                 let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::BP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
                 changed_pieces[Piece::WP as usize] ^= Bitboard::from(captured_sq);
-                changed_pieces[Piece::BP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
-                let checkers = self.compute_checkers(
-                    Square(self.pieces[Piece::BK as usize].trailing_zeros()),
-                    changed_occ,
-                    Color::White,
-                    &changed_pieces,
-                );
-                if checkers.is_empty() {
+
+                if !self.is_square_attacked(king_sq, Color::White, changed_occ, &changed_pieces) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -290,15 +278,10 @@ impl Board {
                     ^ Bitboard::from(captured_sq)
                     ^ Bitboard::from(to);
                 let mut changed_pieces = self.pieces;
+                changed_pieces[Piece::BP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
                 changed_pieces[Piece::WP as usize] ^= Bitboard::from(captured_sq);
-                changed_pieces[Piece::BP as usize] ^= Bitboard::from(to) | Bitboard::from(from);
-                let checkers = self.compute_checkers(
-                    Square(self.pieces[Piece::BK as usize].trailing_zeros()),
-                    changed_occ,
-                    Color::White,
-                    &changed_pieces,
-                );
-                if checkers.is_empty() {
+
+                if !self.is_square_attacked(king_sq, Color::White, changed_occ, &changed_pieces) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -698,10 +681,18 @@ impl Board {
         capture_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: [Bitboard; 64],
+        king_sq: Square,
     ) {
         match self.side_to_move {
             Color::White => {
-                self.get_white_pawn_moves(moves, block_mask, capture_mask, pinned, &pin_rays);
+                self.get_white_pawn_moves(
+                    moves,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                    king_sq,
+                );
                 self.get_knight_moves(moves, Piece::WN, block_mask, capture_mask, pinned);
                 self.get_rook_moves(
                     moves,
@@ -729,7 +720,14 @@ impl Board {
                 );
             }
             Color::Black => {
-                self.get_black_pawn_moves(moves, block_mask, capture_mask, pinned, &pin_rays);
+                self.get_black_pawn_moves(
+                    moves,
+                    block_mask,
+                    capture_mask,
+                    pinned,
+                    &pin_rays,
+                    king_sq,
+                );
                 self.get_knight_moves(moves, Piece::BN, block_mask, capture_mask, pinned);
                 self.get_rook_moves(
                     moves,
@@ -796,10 +794,16 @@ impl Board {
             (!Bitboard(0), !Bitboard(0)) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
-        self.get_non_king_moves(moves, block_mask, capture_mask, pinned, pin_rays); // Careful for ep
+        self.get_non_king_moves(moves, block_mask, capture_mask, pinned, pin_rays, king_sq); // Careful for ep
     }
 
-    pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
+    pub fn is_square_attacked(
+        &self,
+        sq: Square,
+        attacker: Color,
+        occ: Bitboard,
+        pieces: &[Bitboard; 12],
+    ) -> bool {
         let sq_usize = sq.as_usize();
         let (pawn, pawn_table, knight, bishop, rook, queen, king) = match attacker {
             Color::White => (
@@ -822,18 +826,18 @@ impl Board {
             ),
         };
 
-        if !(pawn_table[sq_usize] & self.pieces[pawn as usize]).is_empty() {
+        if !(pawn_table[sq_usize] & pieces[pawn as usize]).is_empty() {
             return true;
         }
 
-        if !(KNIGHT_ATTACKS[sq_usize] & self.pieces[knight as usize]).is_empty() {
+        if !(KNIGHT_ATTACKS[sq_usize] & pieces[knight as usize]).is_empty() {
             return true;
         }
 
-        let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
+        let diag_attackers = pieces[bishop as usize] | pieces[queen as usize];
         if !diag_attackers.is_empty() {
             let diag_mask = BISHOP_MASKS[sq_usize];
-            let diag_blockers = self.occ & diag_mask;
+            let diag_blockers = occ & diag_mask;
             let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize])
                 >> BISHOP_SHIFTS[sq_usize]) as usize;
             let diag_attacks = BISHOP_ATTACKS[sq_usize][diag_idx];
@@ -842,10 +846,10 @@ impl Board {
             }
         }
 
-        let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
+        let orth_attackers = pieces[rook as usize] | pieces[queen as usize];
         if !orth_attackers.is_empty() {
             let orth_mask = ROOK_MASKS[sq_usize];
-            let orth_blockers = self.occ & orth_mask;
+            let orth_blockers = occ & orth_mask;
             let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize])
                 >> ROOK_SHIFTS[sq_usize]) as usize;
             let orth_attacks = ROOK_ATTACKS[sq_usize][orth_idx];
@@ -854,7 +858,7 @@ impl Board {
             }
         }
 
-        if !(KING_ATTACKS[sq_usize] & self.pieces[king as usize]).is_empty() {
+        if !(KING_ATTACKS[sq_usize] & pieces[king as usize]).is_empty() {
             return true;
         }
 
