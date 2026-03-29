@@ -243,9 +243,9 @@ impl Board {
         pin_rays: &[Bitboard; 64],
     ) {
         let side_to_move = self.side_to_move;
-        for from in pieces {
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-
+        let free_pieces = pieces & !pinned;
+        let pinned_pieces = pieces & pinned;
+        for from in free_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
                 let blockers = self.occ & ROOK_MASKS[from.as_usize()];
@@ -259,11 +259,35 @@ impl Board {
                     >> BISHOP_SHIFTS[from.as_usize()]) as usize;
                 attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
             }
-            let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
-            } else {
-                !self.color_occ[side_to_move as usize] & move_mask
-            };
+            let legal_mask = !self.color_occ[side_to_move as usize] & move_mask;
+
+            attacks &= legal_mask;
+
+            for to in attacks {
+                let flag = if self.piece_at(to) == Piece::None {
+                    0
+                } else {
+                    CAPTURE_FLAG
+                };
+                moves.push(Move::new(from, to, Piece::None, flag));
+            }
+        }
+        for from in pinned_pieces {
+            let mut attacks = Bitboard(0);
+            if IS_ROOK {
+                let blockers = self.occ & ROOK_MASKS[from.as_usize()];
+                let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
+                    >> ROOK_SHIFTS[from.as_usize()]) as usize;
+                attacks |= ROOK_ATTACKS[from.as_usize()][idx];
+            }
+            if IS_BISHOP {
+                let blockers = self.occ & BISHOP_MASKS[from.as_usize()];
+                let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
+                    >> BISHOP_SHIFTS[from.as_usize()]) as usize;
+                attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
+            }
+            let legal_mask =
+                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()];
 
             attacks &= legal_mask;
 
