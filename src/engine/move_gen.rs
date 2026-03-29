@@ -17,6 +17,11 @@ impl Board {
         } else {
             self.pieces[Piece::BP as usize]
         };
+        let promotion_pieces = if IS_WHITE {
+            [Piece::WN, Piece::WB, Piece::WR, Piece::WQ]
+        } else {
+            [Piece::BN, Piece::BB, Piece::BR, Piece::BQ]
+        };
         let empty = !self.occ;
         let promotion_pawns = if IS_WHITE {
             pawns & RANK_7
@@ -124,16 +129,8 @@ impl Board {
             } else {
                 Square(to.as_u8() + 8)
             };
-            if IS_WHITE {
-                moves.push(Move::new(from, to, Piece::WN, PROMOTION_FLAG));
-                moves.push(Move::new(from, to, Piece::WB, PROMOTION_FLAG));
-                moves.push(Move::new(from, to, Piece::WR, PROMOTION_FLAG));
-                moves.push(Move::new(from, to, Piece::WQ, PROMOTION_FLAG));
-            } else {
-                moves.push(Move::new(from, to, Piece::BN, PROMOTION_FLAG));
-                moves.push(Move::new(from, to, Piece::BB, PROMOTION_FLAG));
-                moves.push(Move::new(from, to, Piece::BR, PROMOTION_FLAG));
-                moves.push(Move::new(from, to, Piece::BQ, PROMOTION_FLAG));
+            for piece in promotion_pieces {
+                moves.push(Move::new(from, to, piece, PROMOTION_FLAG));
             }
         }
         for from in free_pawns {
@@ -147,56 +144,8 @@ impl Board {
                     & capture_mask
             };
             for to in attacks {
-                if IS_WHITE {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WN,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WB,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WR,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WQ,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                } else {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BN,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BB,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BR,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BQ,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
+                for piece in promotion_pieces {
+                    moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
                 }
             }
         }
@@ -215,56 +164,8 @@ impl Board {
                     & ray
             };
             for to in attacks {
-                if IS_WHITE {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WN,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WB,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WR,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::WQ,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                } else {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BN,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BB,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BR,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::BQ,
-                        PROMOTION_FLAG | CAPTURE_FLAG,
-                    ));
+                for piece in promotion_pieces {
+                    moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
                 }
             }
         }
