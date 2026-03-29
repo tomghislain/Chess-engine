@@ -3,7 +3,7 @@ use crate::engine::board::*;
 use crate::engine::types::*;
 
 impl Board {
-    fn get_white_pawn_moves(
+    fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
         moves: &mut MoveList,
         block_mask: Bitboard,
@@ -12,286 +12,260 @@ impl Board {
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
     ) {
-        let pawns = self.pieces[Piece::WP as usize];
+        let pawns = if IS_WHITE {
+            self.pieces[Piece::WP as usize]
+        } else {
+            self.pieces[Piece::BP as usize]
+        };
         let empty = !self.occ;
-        let promotion_pawns = pawns & RANK_7;
-        let non_promotion_pawns = pawns & !RANK_7;
+        let promotion_pawns = if IS_WHITE {
+            pawns & RANK_7
+        } else {
+            pawns & RANK_2
+        };
+        let non_promotion_pawns = if IS_WHITE {
+            pawns & !RANK_7
+        } else {
+            pawns & !RANK_2
+        };
 
         // Non-promotions
-        let free = non_promotion_pawns & !pinned;
-        let pinned = non_promotion_pawns & pinned;
+        let free_pawns = non_promotion_pawns & !pinned;
+        let pinned_pawns = non_promotion_pawns & pinned;
         // Free
-        let single_push = (free << 8) & empty & block_mask;
+        let single_push = if IS_WHITE {
+            (free_pawns << 8) & empty & block_mask
+        } else {
+            (free_pawns >> 8) & empty & block_mask
+        };
         for to in single_push {
-            let from = Square(to.as_u8() - 8);
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 8)
+            } else {
+                Square(to.as_u8() + 8)
+            };
             moves.push(Move::new(from, to, Piece::None, 0));
         }
-        let double_push = ((((free & RANK_2) << 8) & empty) << 8) & empty & block_mask;
+        let double_push = if IS_WHITE {
+            ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & block_mask
+        } else {
+            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & empty & block_mask
+        };
         for to in double_push {
-            let from = Square(to.as_u8() - 16);
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 16)
+            } else {
+                Square(to.as_u8() + 16)
+            };
             moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
         }
-        for from in free {
-            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::Black as usize]
-                & capture_mask;
+        for from in free_pawns {
+            let attacks = if IS_WHITE {
+                WHITE_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::Black as usize]
+                    & capture_mask
+            } else {
+                BLACK_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::White as usize]
+                    & capture_mask
+            };
             for to in attacks {
                 moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
             }
         }
         // Pinned
-        for from in pinned {
+        for from in pinned_pawns {
             let ray = pin_rays[from.as_usize()];
             let from_bb = Bitboard::from(from);
-            let single_push = (from_bb << 8) & empty & block_mask & ray;
+            let single_push = if IS_WHITE {
+                (from_bb << 8) & empty & block_mask & ray
+            } else {
+                (from_bb >> 8) & empty & block_mask & ray
+            };
             for to in single_push {
                 moves.push(Move::new(from, to, Piece::None, 0));
             }
-            let double_push = ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & block_mask & ray;
+            let double_push = if IS_WHITE {
+                ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & block_mask & ray
+            } else {
+                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & block_mask & ray
+            };
             for to in double_push {
                 moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
             }
-            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::Black as usize]
-                & capture_mask
-                & ray;
+            let attacks = if IS_WHITE {
+                WHITE_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::Black as usize]
+                    & capture_mask
+                    & ray
+            } else {
+                BLACK_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::White as usize]
+                    & capture_mask
+                    & ray
+            };
             for to in attacks {
                 moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
             }
         }
 
         // Promotions
-        let free = promotion_pawns & !pinned;
-        let pinned = promotion_pawns & pinned;
+        let free_pawns = promotion_pawns & !pinned;
+        let pinned_pawns = promotion_pawns & pinned;
         // Free
-        let single_push = (free << 8) & empty & block_mask;
+        let single_push = if IS_WHITE {
+            (free_pawns << 8) & empty & block_mask
+        } else {
+            (free_pawns >> 8) & empty & block_mask
+        };
         for to in single_push {
-            let from = Square(to.as_u8() - 8);
-            moves.push(Move::new(from, to, Piece::WN, PROMOTION_FLAG));
-            moves.push(Move::new(from, to, Piece::WB, PROMOTION_FLAG));
-            moves.push(Move::new(from, to, Piece::WR, PROMOTION_FLAG));
-            moves.push(Move::new(from, to, Piece::WQ, PROMOTION_FLAG));
-        }
-        for from in free {
-            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::Black as usize]
-                & capture_mask;
-            for to in attacks {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WN,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WB,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WR,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WQ,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
+            let from = if IS_WHITE {
+                Square(to.as_u8() - 8)
+            } else {
+                Square(to.as_u8() + 8)
+            };
+            if IS_WHITE {
+                moves.push(Move::new(from, to, Piece::WN, PROMOTION_FLAG));
+                moves.push(Move::new(from, to, Piece::WB, PROMOTION_FLAG));
+                moves.push(Move::new(from, to, Piece::WR, PROMOTION_FLAG));
+                moves.push(Move::new(from, to, Piece::WQ, PROMOTION_FLAG));
+            } else {
+                moves.push(Move::new(from, to, Piece::BN, PROMOTION_FLAG));
+                moves.push(Move::new(from, to, Piece::BB, PROMOTION_FLAG));
+                moves.push(Move::new(from, to, Piece::BR, PROMOTION_FLAG));
+                moves.push(Move::new(from, to, Piece::BQ, PROMOTION_FLAG));
             }
         }
-        // Pinned
-        for from in pinned {
-            let ray = pin_rays[from.as_usize()];
-            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::Black as usize]
-                & capture_mask
-                & ray;
+        for from in free_pawns {
+            let attacks = if IS_WHITE {
+                WHITE_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::Black as usize]
+                    & capture_mask
+            } else {
+                BLACK_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::White as usize]
+                    & capture_mask
+            };
             for to in attacks {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WN,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WB,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WR,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::WQ,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-            }
-        }
-
-        // En passant
-        if self.en_passant().as_u8() < 64 {
-            let to = self.en_passant();
-            let en_passant_mask = Bitboard::from(to);
-            let captured_mask = en_passant_mask >> 8;
-            let attacks = (WHITE_PAWN_ATTACKS[to.as_usize()] >> 16) & pawns; // Pawn attack table reuse for cache locality
-            for from in attacks {
-                let changed_occ =
-                    self.occ ^ (Bitboard::from(from)) ^ (captured_mask) ^ (en_passant_mask);
-                let changed_pawns = self.pieces[Piece::BP as usize] ^ captured_mask;
-                if !self.is_square_attacked(king_sq, Color::Black, changed_occ, changed_pawns) {
+                if IS_WHITE {
                     moves.push(Move::new(
                         from,
                         to,
-                        Piece::None,
-                        CAPTURE_FLAG | EN_PASSANT_FLAG,
+                        Piece::WN,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WB,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WR,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WQ,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                } else {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BN,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BB,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BR,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BQ,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
                     ));
                 }
             }
         }
-    }
-
-    fn get_black_pawn_moves(
-        &self,
-        moves: &mut MoveList,
-        block_mask: Bitboard,
-        capture_mask: Bitboard,
-        pinned: Bitboard,
-        pin_rays: &[Bitboard; 64],
-        king_sq: Square,
-    ) {
-        let pawns = self.pieces[Piece::BP as usize];
-        let empty = !self.occ;
-        let promotion_pawns = pawns & RANK_2;
-        let non_promotion_pawns = pawns & !RANK_2;
-
-        // Non-promotions
-        let free = non_promotion_pawns & !pinned;
-        let pinned = non_promotion_pawns & pinned;
-        // Free
-        let single_push = (free >> 8) & empty & block_mask;
-        for to in single_push {
-            let from = Square(to.as_u8() + 8);
-            moves.push(Move::new(from, to, Piece::None, 0));
-        }
-        let double_push = ((((free & RANK_7) >> 8) & empty) >> 8) & empty & block_mask;
-        for to in double_push {
-            let from = Square(to.as_u8() + 16);
-            moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
-        }
-        for from in free {
-            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::White as usize]
-                & capture_mask;
-            for to in attacks {
-                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
-            }
-        }
         // Pinned
-        for from in pinned {
+        for from in pinned_pawns {
             let ray = pin_rays[from.as_usize()];
-            let from_bb = Bitboard::from(from);
-            let single_push = (from_bb >> 8) & empty & block_mask & ray;
-            for to in single_push {
-                moves.push(Move::new(from, to, Piece::None, 0));
-            }
-            let double_push = ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & block_mask & ray;
-            for to in double_push {
-                moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
-            }
-            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::White as usize]
-                & capture_mask
-                & ray;
+            let attacks = if IS_WHITE {
+                WHITE_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::Black as usize]
+                    & capture_mask
+                    & ray
+            } else {
+                BLACK_PAWN_ATTACKS[from.as_usize()]
+                    & self.color_occ[Color::White as usize]
+                    & capture_mask
+                    & ray
+            };
             for to in attacks {
-                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
-            }
-        }
-
-        // Promotions
-        let free = promotion_pawns & !pinned;
-        let pinned = promotion_pawns & pinned;
-        // Free
-        let single_push = (free >> 8) & empty & block_mask;
-        for to in single_push {
-            let from = Square(to.as_u8() + 8);
-            moves.push(Move::new(from, to, Piece::BN, PROMOTION_FLAG));
-            moves.push(Move::new(from, to, Piece::BB, PROMOTION_FLAG));
-            moves.push(Move::new(from, to, Piece::BR, PROMOTION_FLAG));
-            moves.push(Move::new(from, to, Piece::BQ, PROMOTION_FLAG));
-        }
-        for from in free {
-            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::White as usize]
-                & capture_mask;
-            for to in attacks {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BN,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BB,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BR,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BQ,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-            }
-        }
-        // Pinned
-        for from in pinned {
-            let ray = pin_rays[from.as_usize()];
-            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
-                & self.color_occ[Color::White as usize]
-                & capture_mask
-                & ray;
-            for to in attacks {
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BN,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BB,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BR,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
-                moves.push(Move::new(
-                    from,
-                    to,
-                    Piece::BQ,
-                    PROMOTION_FLAG | CAPTURE_FLAG,
-                ));
+                if IS_WHITE {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WN,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WB,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WR,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::WQ,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                } else {
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BN,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BB,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BR,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                    moves.push(Move::new(
+                        from,
+                        to,
+                        Piece::BQ,
+                        PROMOTION_FLAG | CAPTURE_FLAG,
+                    ));
+                }
             }
         }
 
@@ -299,13 +273,30 @@ impl Board {
         if self.en_passant().as_u8() < 64 {
             let to = self.en_passant();
             let en_passant_mask = Bitboard::from(to);
-            let captured_mask = en_passant_mask << 8;
-            let attacks = (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns; // Pawn attack table reuse for cache locality
+            let captured_mask = if IS_WHITE {
+                en_passant_mask >> 8
+            } else {
+                en_passant_mask << 8
+            };
+            let attacks = if IS_WHITE {
+                (WHITE_PAWN_ATTACKS[to.as_usize()] >> 16) & pawns
+            } else {
+                (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns
+            }; // Pawn attack table reuse for cache locality
             for from in attacks {
                 let changed_occ =
                     self.occ ^ (Bitboard::from(from)) ^ (captured_mask) ^ (en_passant_mask);
-                let changed_pawns = self.pieces[Piece::WP as usize] ^ captured_mask;
-                if !self.is_square_attacked(king_sq, Color::White, changed_occ, changed_pawns) {
+                let changed_pawns = if IS_WHITE {
+                    self.pieces[Piece::BP as usize] ^ captured_mask
+                } else {
+                    self.pieces[Piece::WP as usize] ^ captured_mask
+                };
+                if !self.is_square_attacked(
+                    king_sq,
+                    if IS_WHITE { Color::Black } else { Color::White },
+                    changed_occ,
+                    changed_pawns,
+                ) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -709,7 +700,7 @@ impl Board {
     ) {
         match self.side_to_move {
             Color::White => {
-                self.get_white_pawn_moves(
+                self.get_pawn_moves::<true>(
                     moves,
                     block_mask,
                     capture_mask,
@@ -744,7 +735,7 @@ impl Board {
                 );
             }
             Color::Black => {
-                self.get_black_pawn_moves(
+                self.get_pawn_moves::<false>(
                     moves,
                     block_mask,
                     capture_mask,
