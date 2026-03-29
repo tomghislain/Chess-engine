@@ -234,108 +234,39 @@ impl Board {
         }
     }
 
-    fn get_rook_moves(
+    fn get_sliding_moves<const IS_ROOK: bool, const IS_BISHOP: bool>(
         &self,
         moves: &mut MoveList,
-        rook_piece: Piece,
+        piece: Piece,
         move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
+        let pieces = self.pieces[piece as usize];
         let side_to_move = self.side_to_move;
-        let rooks = self.pieces[rook_piece as usize];
-        for from in rooks {
+        for from in pieces {
             let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
 
-            let mask = ROOK_MASKS[from.as_usize()];
-            let blockers = self.occ & mask;
-            let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
-                >> ROOK_SHIFTS[from.as_usize()]) as usize;
-            let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
-            } else {
-                !self.color_occ[side_to_move as usize] & move_mask
-            };
-            let attacks = ROOK_ATTACKS[from.as_usize()][idx] & legal_mask;
-
-            for to in attacks {
-                let flag = if self.piece_at(to) == Piece::None {
-                    0
-                } else {
-                    CAPTURE_FLAG
-                };
-                moves.push(Move::new(from, to, Piece::None, flag));
+            let mut attacks = Bitboard(0);
+            if IS_ROOK {
+                let blockers = self.occ & ROOK_MASKS[from.as_usize()];
+                let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
+                    >> ROOK_SHIFTS[from.as_usize()]) as usize;
+                attacks |= ROOK_ATTACKS[from.as_usize()][idx];
             }
-        }
-    }
-
-    fn get_bishop_moves(
-        &self,
-        moves: &mut MoveList,
-        bishop_piece: Piece,
-        move_mask: Bitboard,
-        pinned: Bitboard,
-        pin_rays: &[Bitboard; 64],
-    ) {
-        let side_to_move = self.side_to_move;
-        let bishops = self.pieces[bishop_piece as usize];
-        for from in bishops {
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-
-            let mask = BISHOP_MASKS[from.as_usize()];
-            let blockers = self.occ & mask;
-            let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
-                >> BISHOP_SHIFTS[from.as_usize()]) as usize;
-            let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
-            } else {
-                !self.color_occ[side_to_move as usize] & move_mask
-            };
-            let attacks = BISHOP_ATTACKS[from.as_usize()][idx] & legal_mask;
-
-            for to in attacks {
-                let flag = if self.piece_at(to) == Piece::None {
-                    0
-                } else {
-                    CAPTURE_FLAG
-                };
-                moves.push(Move::new(from, to, Piece::None, flag));
+            if IS_BISHOP {
+                let blockers = self.occ & BISHOP_MASKS[from.as_usize()];
+                let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
+                    >> BISHOP_SHIFTS[from.as_usize()]) as usize;
+                attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
             }
-        }
-    }
-
-    fn get_queen_moves(
-        &self,
-        moves: &mut MoveList,
-        queen_piece: Piece,
-        move_mask: Bitboard,
-        pinned: Bitboard,
-        pin_rays: &[Bitboard; 64],
-    ) {
-        let side_to_move = self.side_to_move;
-        let queens = self.pieces[queen_piece as usize];
-        for from in queens {
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-
-            let orth_mask = ROOK_MASKS[from.as_usize()];
-            let orth_blockers = self.occ & orth_mask;
-            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
-                >> ROOK_SHIFTS[from.as_usize()]) as usize;
-            let orth_attacks = ROOK_ATTACKS[from.as_usize()][orth_idx];
-
-            let diag_mask = BISHOP_MASKS[from.as_usize()];
-            let diag_blockers = self.occ & diag_mask;
-            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
-                >> BISHOP_SHIFTS[from.as_usize()]) as usize;
-            let diag_attacks = BISHOP_ATTACKS[from.as_usize()][diag_idx];
-
             let legal_mask = if is_pinned {
                 !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
             } else {
                 !self.color_occ[side_to_move as usize] & move_mask
             };
 
-            let attacks = (orth_attacks | diag_attacks) & legal_mask;
+            attacks &= legal_mask;
 
             for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
@@ -590,16 +521,40 @@ impl Board {
             Color::White => {
                 self.get_pawn_moves::<true>(moves, move_mask, pinned, pin_rays, king_sq);
                 self.get_knight_moves(moves, Piece::WN, move_mask, pinned);
-                self.get_rook_moves(moves, Piece::WR, move_mask, pinned, pin_rays);
-                self.get_bishop_moves(moves, Piece::WB, move_mask, pinned, pin_rays);
-                self.get_queen_moves(moves, Piece::WQ, move_mask, pinned, pin_rays);
+                self.get_sliding_moves::<true, false>(
+                    moves,
+                    Piece::WR,
+                    move_mask,
+                    pinned,
+                    pin_rays,
+                );
+                self.get_sliding_moves::<false, true>(
+                    moves,
+                    Piece::WB,
+                    move_mask,
+                    pinned,
+                    pin_rays,
+                );
+                self.get_sliding_moves::<true, true>(moves, Piece::WQ, move_mask, pinned, pin_rays);
             }
             Color::Black => {
                 self.get_pawn_moves::<false>(moves, move_mask, pinned, pin_rays, king_sq);
                 self.get_knight_moves(moves, Piece::BN, move_mask, pinned);
-                self.get_rook_moves(moves, Piece::BR, move_mask, pinned, pin_rays);
-                self.get_bishop_moves(moves, Piece::BB, move_mask, pinned, pin_rays);
-                self.get_queen_moves(moves, Piece::BQ, move_mask, pinned, pin_rays);
+                self.get_sliding_moves::<true, false>(
+                    moves,
+                    Piece::BR,
+                    move_mask,
+                    pinned,
+                    pin_rays,
+                );
+                self.get_sliding_moves::<false, true>(
+                    moves,
+                    Piece::BB,
+                    move_mask,
+                    pinned,
+                    pin_rays,
+                );
+                self.get_sliding_moves::<true, true>(moves, Piece::BQ, move_mask, pinned, pin_rays);
             }
         }
     }
