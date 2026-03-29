@@ -211,13 +211,13 @@ impl Board {
     fn get_knight_moves(
         &self,
         moves: &mut MoveList,
-        knight_piece: Piece,
+        knights: Bitboard,
         move_mask: Bitboard,
         pinned: Bitboard,
     ) {
         let side_to_move = self.side_to_move;
-        let knights = self.pieces[knight_piece as usize] & !pinned;
-        for from in knights {
+        let free_knights = knights & !pinned;
+        for from in free_knights {
             let attacks = KNIGHT_ATTACKS[from.as_usize()]
                 & !self.color_occ[side_to_move as usize]
                 & move_mask;
@@ -237,12 +237,11 @@ impl Board {
     fn get_sliding_moves<const IS_ROOK: bool, const IS_BISHOP: bool>(
         &self,
         moves: &mut MoveList,
-        piece: Piece,
+        pieces: Bitboard,
         move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
-        let pieces = self.pieces[piece as usize];
         let side_to_move = self.side_to_move;
         for from in pieces {
             let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
@@ -519,44 +518,32 @@ impl Board {
     ) {
         match self.side_to_move {
             Color::White => {
+                let (knights, rooks, bishops, queens) = (
+                    self.pieces[Piece::WN as usize],
+                    self.pieces[Piece::WR as usize],
+                    self.pieces[Piece::WB as usize],
+                    self.pieces[Piece::WQ as usize],
+                );
                 self.get_pawn_moves::<true>(moves, move_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(moves, Piece::WN, move_mask, pinned);
-                self.get_sliding_moves::<true, false>(
-                    moves,
-                    Piece::WR,
-                    move_mask,
-                    pinned,
-                    pin_rays,
-                );
-                self.get_sliding_moves::<false, true>(
-                    moves,
-                    Piece::WB,
-                    move_mask,
-                    pinned,
-                    pin_rays,
-                );
-                self.get_sliding_moves::<true, true>(moves, Piece::WQ, move_mask, pinned, pin_rays);
+                self.get_knight_moves(moves, knights, move_mask, pinned);
+                self.get_sliding_moves::<true, false>(moves, rooks, move_mask, pinned, pin_rays);
+                self.get_sliding_moves::<false, true>(moves, bishops, move_mask, pinned, pin_rays);
+                self.get_sliding_moves::<true, true>(moves, queens, move_mask, pinned, pin_rays);
             }
             Color::Black => {
+                let (knights, rooks, bishops, queens) = (
+                    self.pieces[Piece::BN as usize],
+                    self.pieces[Piece::BR as usize],
+                    self.pieces[Piece::BB as usize],
+                    self.pieces[Piece::BQ as usize],
+                );
                 self.get_pawn_moves::<false>(moves, move_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(moves, Piece::BN, move_mask, pinned);
-                self.get_sliding_moves::<true, false>(
-                    moves,
-                    Piece::BR,
-                    move_mask,
-                    pinned,
-                    pin_rays,
-                );
-                self.get_sliding_moves::<false, true>(
-                    moves,
-                    Piece::BB,
-                    move_mask,
-                    pinned,
-                    pin_rays,
-                );
-                self.get_sliding_moves::<true, true>(moves, Piece::BQ, move_mask, pinned, pin_rays);
+                self.get_knight_moves(moves, knights, move_mask, pinned);
+                self.get_sliding_moves::<true, false>(moves, rooks, move_mask, pinned, pin_rays);
+                self.get_sliding_moves::<false, true>(moves, bishops, move_mask, pinned, pin_rays);
+                self.get_sliding_moves::<true, true>(moves, queens, move_mask, pinned, pin_rays);
             }
-        }
+        };
     }
 
     pub fn get_legal_moves(&self, moves: &mut MoveList) {
