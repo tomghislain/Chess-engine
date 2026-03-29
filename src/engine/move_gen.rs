@@ -242,9 +242,9 @@ impl Board {
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
-        let side_to_move = self.side_to_move;
         let free_pieces = pieces & !pinned;
         let pinned_pieces = pieces & pinned;
+        let base_mask = !self.color_occ[self.side_to_move as usize] & move_mask;
         for from in free_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
@@ -259,9 +259,7 @@ impl Board {
                     >> BISHOP_SHIFTS[from.as_usize()]) as usize;
                 attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
             }
-            let legal_mask = !self.color_occ[side_to_move as usize] & move_mask;
-
-            attacks &= legal_mask;
+            attacks &= base_mask;
 
             for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
@@ -286,10 +284,7 @@ impl Board {
                     >> BISHOP_SHIFTS[from.as_usize()]) as usize;
                 attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
             }
-            let legal_mask =
-                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()];
-
-            attacks &= legal_mask;
+            attacks &= base_mask & pin_rays[from.as_usize()];
 
             for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
