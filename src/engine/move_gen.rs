@@ -6,7 +6,7 @@ impl Board {
     fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
         moves: &mut MoveList,
-        legal_mask: Bitboard,
+        move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
@@ -38,9 +38,9 @@ impl Board {
         let pinned_pawns = non_promotion_pawns & pinned;
         // Free
         let single_push = if IS_WHITE {
-            (free_pawns << 8) & empty & legal_mask
+            (free_pawns << 8) & empty & move_mask
         } else {
-            (free_pawns >> 8) & empty & legal_mask
+            (free_pawns >> 8) & empty & move_mask
         };
         for to in single_push {
             let from = if IS_WHITE {
@@ -51,9 +51,9 @@ impl Board {
             moves.push(Move::new(from, to, Piece::None, 0));
         }
         let double_push = if IS_WHITE {
-            ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & legal_mask
+            ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & move_mask
         } else {
-            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & empty & legal_mask
+            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & empty & move_mask
         };
         for to in double_push {
             let from = if IS_WHITE {
@@ -67,11 +67,11 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & legal_mask
+                    & move_mask
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & legal_mask
+                    & move_mask
             };
             for to in attacks {
                 moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
@@ -82,17 +82,17 @@ impl Board {
             let ray = pin_rays[from.as_usize()];
             let from_bb = Bitboard::from(from);
             let single_push = if IS_WHITE {
-                (from_bb << 8) & empty & legal_mask & ray
+                (from_bb << 8) & empty & move_mask & ray
             } else {
-                (from_bb >> 8) & empty & legal_mask & ray
+                (from_bb >> 8) & empty & move_mask & ray
             };
             for to in single_push {
                 moves.push(Move::new(from, to, Piece::None, 0));
             }
             let double_push = if IS_WHITE {
-                ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & legal_mask & ray
+                ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & move_mask & ray
             } else {
-                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & legal_mask & ray
+                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & move_mask & ray
             };
             for to in double_push {
                 moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
@@ -100,12 +100,12 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & legal_mask
+                    & move_mask
                     & ray
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & legal_mask
+                    & move_mask
                     & ray
             };
             for to in attacks {
@@ -118,9 +118,9 @@ impl Board {
         let pinned_pawns = promotion_pawns & pinned;
         // Free
         let single_push = if IS_WHITE {
-            (free_pawns << 8) & empty & legal_mask
+            (free_pawns << 8) & empty & move_mask
         } else {
-            (free_pawns >> 8) & empty & legal_mask
+            (free_pawns >> 8) & empty & move_mask
         };
         for to in single_push {
             let from = if IS_WHITE {
@@ -136,11 +136,11 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & legal_mask
+                    & move_mask
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & legal_mask
+                    & move_mask
             };
             for to in attacks {
                 for piece in promotion_pieces {
@@ -154,12 +154,12 @@ impl Board {
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::Black as usize]
-                    & legal_mask
+                    & move_mask
                     & ray
             } else {
                 BLACK_PAWN_ATTACKS[from.as_usize()]
                     & self.color_occ[Color::White as usize]
-                    & legal_mask
+                    & move_mask
                     & ray
             };
             for to in attacks {
@@ -212,7 +212,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         knight_piece: Piece,
-        legal_mask: Bitboard,
+        move_mask: Bitboard,
         pinned: Bitboard,
     ) {
         let side_to_move = self.side_to_move;
@@ -220,7 +220,7 @@ impl Board {
         for from in knights {
             let attacks = KNIGHT_ATTACKS[from.as_usize()]
                 & !self.color_occ[side_to_move as usize]
-                & legal_mask;
+                & move_mask;
 
             for to in attacks {
                 let flag = if self.piece_at(to) == Piece::None {
@@ -238,7 +238,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         rook_piece: Piece,
-        legal_mask: Bitboard,
+        move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
@@ -252,9 +252,9 @@ impl Board {
             let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
                 >> ROOK_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize] & legal_mask & pin_rays[from.as_usize()]
+                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[side_to_move as usize] & legal_mask
+                !self.color_occ[side_to_move as usize] & move_mask
             };
             let attacks = ROOK_ATTACKS[from.as_usize()][idx] & legal_mask;
 
@@ -273,7 +273,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         bishop_piece: Piece,
-        legal_mask: Bitboard,
+        move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
@@ -287,9 +287,9 @@ impl Board {
             let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
                 >> BISHOP_SHIFTS[from.as_usize()]) as usize;
             let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize] & legal_mask & pin_rays[from.as_usize()]
+                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[side_to_move as usize] & legal_mask
+                !self.color_occ[side_to_move as usize] & move_mask
             };
             let attacks = BISHOP_ATTACKS[from.as_usize()][idx] & legal_mask;
 
@@ -308,7 +308,7 @@ impl Board {
         &self,
         moves: &mut MoveList,
         queen_piece: Piece,
-        legal_mask: Bitboard,
+        move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
     ) {
@@ -330,9 +330,9 @@ impl Board {
             let diag_attacks = BISHOP_ATTACKS[from.as_usize()][diag_idx];
 
             let legal_mask = if is_pinned {
-                !self.color_occ[side_to_move as usize] & legal_mask & pin_rays[from.as_usize()]
+                !self.color_occ[side_to_move as usize] & move_mask & pin_rays[from.as_usize()]
             } else {
-                !self.color_occ[side_to_move as usize] & legal_mask
+                !self.color_occ[side_to_move as usize] & move_mask
             };
 
             let attacks = (orth_attacks | diag_attacks) & legal_mask;
