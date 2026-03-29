@@ -162,7 +162,9 @@ impl Board {
             } else {
                 Square(to.as_u8() + 7)
             };
-            moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+            for piece in promotion_pieces {
+                moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
+            }
         }
 
         let right_captures = if IS_WHITE {
