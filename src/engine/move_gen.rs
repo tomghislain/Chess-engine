@@ -581,25 +581,25 @@ impl Board {
     fn get_non_king_moves(
         &self,
         moves: &mut MoveList,
-        legal_mask: Bitboard,
+        move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
     ) {
         match self.side_to_move {
             Color::White => {
-                self.get_pawn_moves::<true>(moves, legal_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(moves, Piece::WN, legal_mask, pinned);
-                self.get_rook_moves(moves, Piece::WR, legal_mask, pinned, pin_rays);
-                self.get_bishop_moves(moves, Piece::WB, legal_mask, pinned, pin_rays);
-                self.get_queen_moves(moves, Piece::WQ, legal_mask, pinned, pin_rays);
+                self.get_pawn_moves::<true>(moves, move_mask, pinned, pin_rays, king_sq);
+                self.get_knight_moves(moves, Piece::WN, move_mask, pinned);
+                self.get_rook_moves(moves, Piece::WR, move_mask, pinned, pin_rays);
+                self.get_bishop_moves(moves, Piece::WB, move_mask, pinned, pin_rays);
+                self.get_queen_moves(moves, Piece::WQ, move_mask, pinned, pin_rays);
             }
             Color::Black => {
-                self.get_pawn_moves::<false>(moves, legal_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(moves, Piece::BN, legal_mask, pinned);
-                self.get_rook_moves(moves, Piece::BR, legal_mask, pinned, pin_rays);
-                self.get_bishop_moves(moves, Piece::BB, legal_mask, pinned, pin_rays);
-                self.get_queen_moves(moves, Piece::BQ, legal_mask, pinned, pin_rays);
+                self.get_pawn_moves::<false>(moves, move_mask, pinned, pin_rays, king_sq);
+                self.get_knight_moves(moves, Piece::BN, move_mask, pinned);
+                self.get_rook_moves(moves, Piece::BR, move_mask, pinned, pin_rays);
+                self.get_bishop_moves(moves, Piece::BB, move_mask, pinned, pin_rays);
+                self.get_queen_moves(moves, Piece::BQ, move_mask, pinned, pin_rays);
             }
         }
     }
@@ -634,14 +634,14 @@ impl Board {
 
         let in_check = !checkers.is_empty();
         // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
-        let legal_mask = if in_check {
+        let move_mask = if in_check {
             self.compute_block_mask(king_sq, checkers) | checkers
         } else {
             self.gen_castling_moves(moves, king_danger_mask); // Castling moves can only happen when not in check
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
-        self.get_non_king_moves(moves, legal_mask, pinned, &pin_rays, king_sq);
+        self.get_non_king_moves(moves, move_mask, pinned, &pin_rays, king_sq);
     }
 
     pub fn is_square_attacked(
