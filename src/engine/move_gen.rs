@@ -14,89 +14,127 @@ impl Board {
     ) {
         let pawns = self.pieces[Piece::WP as usize];
         let empty = !self.occ;
+        let promotion_pawns = pawns & RANK_7;
+        let non_promotion_pawns = pawns & !RANK_7;
 
-        // Single pushes
-        let single_push = (pawns << 8) & empty;
+        // Non-promotions
+        let free = non_promotion_pawns & !pinned;
+        let pinned = non_promotion_pawns & pinned;
+        // Free
+        let single_push = (free << 8) & empty & block_mask;
         for to in single_push {
             let from = Square(to.as_u8() - 8);
-            let is_promotion = to.as_u8() > 55;
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-            let is_legal = if is_pinned {
-                !(Bitboard::from(to) & pin_rays[from.as_usize()] & block_mask).is_empty()
-            } else {
-                !(block_mask & Bitboard::from(to)).is_empty()
-            };
-            if is_legal {
-                if is_promotion {
-                    moves.push(Move::new(from, to, Piece::WN, PROMOTION_FLAG));
-                    moves.push(Move::new(from, to, Piece::WB, PROMOTION_FLAG));
-                    moves.push(Move::new(from, to, Piece::WR, PROMOTION_FLAG));
-                    moves.push(Move::new(from, to, Piece::WQ, PROMOTION_FLAG));
-                } else {
-                    moves.push(Move::new(from, to, Piece::None, 0));
-                }
+            moves.push(Move::new(from, to, Piece::None, 0));
+        }
+        let double_push = ((((free & RANK_2) << 8) & empty) << 8) & empty & block_mask;
+        for to in double_push {
+            let from = Square(to.as_u8() - 16);
+            moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
+        }
+        for from in free {
+            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::Black as usize]
+                & capture_mask;
+            for to in attacks {
+                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+            }
+        }
+        // Pinned
+        for from in pinned {
+            let ray = pin_rays[from.as_usize()];
+            let from_bb = Bitboard::from(from);
+            let single_push = (from_bb << 8) & empty & block_mask & ray;
+            for to in single_push {
+                moves.push(Move::new(from, to, Piece::None, 0));
+            }
+            let double_push = ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & block_mask & ray;
+            for to in double_push {
+                moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
+            }
+            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::Black as usize]
+                & capture_mask
+                & ray;
+            for to in attacks {
+                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
             }
         }
 
-        // Double pushes
-        let first_push = ((pawns & RANK_2) << 8) & empty;
-        let double_push = (first_push << 8) & empty;
-        for to in double_push {
-            let from = Square(to.as_u8() - 16);
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-            let is_legal = if is_pinned {
-                !((Bitboard::from(to)) & pin_rays[from.as_usize()] & block_mask).is_empty()
-            } else {
-                !(block_mask & Bitboard::from(to)).is_empty()
-            };
-            if is_legal {
-                moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG))
-            };
+        // Promotions
+        let free = promotion_pawns & !pinned;
+        let pinned = promotion_pawns & pinned;
+        // Free
+        let single_push = (free << 8) & empty & block_mask;
+        for to in single_push {
+            let from = Square(to.as_u8() - 8);
+            moves.push(Move::new(from, to, Piece::WN, PROMOTION_FLAG));
+            moves.push(Move::new(from, to, Piece::WB, PROMOTION_FLAG));
+            moves.push(Move::new(from, to, Piece::WR, PROMOTION_FLAG));
+            moves.push(Move::new(from, to, Piece::WQ, PROMOTION_FLAG));
         }
-
-        // Captures
-        let captures = pawns;
-        for from in captures {
-            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()] & self.color_occ[1];
-
+        for from in free {
+            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::Black as usize]
+                & capture_mask;
             for to in attacks {
-                let is_promotion = to.as_u8() > 55;
-                let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-                let is_legal = if is_pinned {
-                    !((Bitboard::from(to)) & pin_rays[from.as_usize()] & capture_mask).is_empty()
-                } else {
-                    !(capture_mask & Bitboard::from(to)).is_empty()
-                };
-                if is_legal {
-                    if is_promotion {
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::WN,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::WB,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::WR,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::WQ,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                    } else {
-                        moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
-                    }
-                }
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WN,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WB,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WR,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WQ,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+            }
+        }
+        // Pinned
+        for from in pinned {
+            let ray = pin_rays[from.as_usize()];
+            let attacks = WHITE_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::Black as usize]
+                & capture_mask
+                & ray;
+            for to in attacks {
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WN,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WB,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WR,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::WQ,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
             }
         }
 
@@ -133,88 +171,127 @@ impl Board {
     ) {
         let pawns = self.pieces[Piece::BP as usize];
         let empty = !self.occ;
+        let promotion_pawns = pawns & RANK_2;
+        let non_promotion_pawns = pawns & !RANK_2;
 
-        // Single pushes
-        let single_push = (pawns >> 8) & empty;
+        // Non-promotions
+        let free = non_promotion_pawns & !pinned;
+        let pinned = non_promotion_pawns & pinned;
+        // Free
+        let single_push = (free >> 8) & empty & block_mask;
         for to in single_push {
             let from = Square(to.as_u8() + 8);
-            let is_promotion = to.as_u8() < 8;
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-            let is_legal = if is_pinned {
-                !(Bitboard::from(to) & pin_rays[from.as_usize()] & block_mask).is_empty()
-            } else {
-                !(block_mask & Bitboard::from(to)).is_empty()
-            };
-            if is_legal {
-                if is_promotion {
-                    moves.push(Move::new(from, to, Piece::BN, PROMOTION_FLAG));
-                    moves.push(Move::new(from, to, Piece::BB, PROMOTION_FLAG));
-                    moves.push(Move::new(from, to, Piece::BR, PROMOTION_FLAG));
-                    moves.push(Move::new(from, to, Piece::BQ, PROMOTION_FLAG));
-                } else {
-                    moves.push(Move::new(from, to, Piece::None, 0));
-                }
-            }
+            moves.push(Move::new(from, to, Piece::None, 0));
         }
-
-        // Double pushes
-        let first_push = ((pawns & RANK_7) >> 8) & empty;
-        let double_push = (first_push >> 8) & empty;
+        let double_push = ((((free & RANK_7) >> 8) & empty) >> 8) & empty & block_mask;
         for to in double_push {
             let from = Square(to.as_u8() + 16);
-            let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-            let is_legal = if is_pinned {
-                !(Bitboard::from(to) & pin_rays[from.as_usize()] & block_mask).is_empty()
-            } else {
-                !(block_mask & Bitboard::from(to)).is_empty()
-            };
-            if is_legal {
+            moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
+        }
+        for from in free {
+            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::White as usize]
+                & capture_mask;
+            for to in attacks {
+                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+            }
+        }
+        // Pinned
+        for from in pinned {
+            let ray = pin_rays[from.as_usize()];
+            let from_bb = Bitboard::from(from);
+            let single_push = (from_bb >> 8) & empty & block_mask & ray;
+            for to in single_push {
+                moves.push(Move::new(from, to, Piece::None, 0));
+            }
+            let double_push = ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & block_mask & ray;
+            for to in double_push {
                 moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
+            }
+            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::White as usize]
+                & capture_mask
+                & ray;
+            for to in attacks {
+                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
             }
         }
 
-        // Captures
-        let captures = pawns;
-        for from in captures {
-            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()] & self.color_occ[0];
+        // Promotions
+        let free = promotion_pawns & !pinned;
+        let pinned = promotion_pawns & pinned;
+        // Free
+        let single_push = (free >> 8) & empty & block_mask;
+        for to in single_push {
+            let from = Square(to.as_u8() + 8);
+            moves.push(Move::new(from, to, Piece::BN, PROMOTION_FLAG));
+            moves.push(Move::new(from, to, Piece::BB, PROMOTION_FLAG));
+            moves.push(Move::new(from, to, Piece::BR, PROMOTION_FLAG));
+            moves.push(Move::new(from, to, Piece::BQ, PROMOTION_FLAG));
+        }
+        for from in free {
+            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::White as usize]
+                & capture_mask;
             for to in attacks {
-                let is_promotion = to.as_u8() < 8;
-                let is_pinned = !(pinned & Bitboard::from(from)).is_empty();
-                let is_legal = if is_pinned {
-                    !(Bitboard::from(to) & pin_rays[from.as_usize()] & capture_mask).is_empty()
-                } else {
-                    !(capture_mask & Bitboard::from(to)).is_empty()
-                };
-                if is_legal {
-                    if is_promotion {
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::BN,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::BB,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::BR,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                        moves.push(Move::new(
-                            from,
-                            to,
-                            Piece::BQ,
-                            CAPTURE_FLAG | PROMOTION_FLAG,
-                        ));
-                    } else {
-                        moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
-                    }
-                }
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BN,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BB,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BR,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BQ,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+            }
+        }
+        // Pinned
+        for from in pinned {
+            let ray = pin_rays[from.as_usize()];
+            let attacks = BLACK_PAWN_ATTACKS[from.as_usize()]
+                & self.color_occ[Color::White as usize]
+                & capture_mask
+                & ray;
+            for to in attacks {
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BN,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BB,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BR,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
+                moves.push(Move::new(
+                    from,
+                    to,
+                    Piece::BQ,
+                    PROMOTION_FLAG | CAPTURE_FLAG,
+                ));
             }
         }
 
@@ -222,7 +299,7 @@ impl Board {
         if self.en_passant().as_u8() < 64 {
             let to = self.en_passant();
             let en_passant_mask = Bitboard::from(to);
-            let captured_mask = en_passant_mask >> 8;
+            let captured_mask = en_passant_mask << 8;
             let attacks = (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns; // Pawn attack table reuse for cache locality
             for from in attacks {
                 let changed_occ =
