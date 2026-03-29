@@ -102,41 +102,15 @@ impl Board {
 
         // En passant
         if self.en_passant().as_u8() < 64 {
-            let en_passant_mask = Bitboard::from(self.en_passant());
-            let left_en_passant = ((pawns << 7) & !FILE_H) & en_passant_mask;
-            for to in left_en_passant {
-                let from = Square(to.as_u8() - 7);
-                let captured_sq = Square(to.as_u8() - 8);
-                let changed_occ = self.occ
-                    ^ (Bitboard::from(from))
-                    ^ (Bitboard::from(captured_sq))
-                    ^ (Bitboard::from(to));
-                let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::WP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
-                changed_pieces[Piece::BP as usize] ^= Bitboard::from(captured_sq);
-
-                if !self.is_square_attacked(king_sq, Color::Black, changed_occ, &changed_pieces) {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::None,
-                        CAPTURE_FLAG | EN_PASSANT_FLAG,
-                    ));
-                }
-            }
-            let right_en_passant = ((pawns << 9) & !FILE_A) & en_passant_mask;
-            for to in right_en_passant {
-                let from = Square(to.as_u8() - 9);
-                let captured_sq = Square(to.as_u8() - 8);
-                let changed_occ = self.occ
-                    ^ Bitboard::from(from)
-                    ^ Bitboard::from(captured_sq)
-                    ^ Bitboard::from(to);
-                let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::WP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
-                changed_pieces[Piece::BP as usize] ^= Bitboard::from(captured_sq);
-
-                if !self.is_square_attacked(king_sq, Color::Black, changed_occ, &changed_pieces) {
+            let to = self.en_passant();
+            let en_passant_mask = Bitboard::from(to);
+            let captured_mask = en_passant_mask >> 8;
+            let attacks = (WHITE_PAWN_ATTACKS[to.as_usize()] >> 16) & pawns; // Pawn attack table reuse for cache locality
+            for from in attacks {
+                let changed_occ =
+                    self.occ ^ (Bitboard::from(from)) ^ (captured_mask) ^ (en_passant_mask);
+                let changed_pawns = self.pieces[Piece::BP as usize] ^ captured_mask;
+                if !self.is_square_attacked(king_sq, Color::Black, changed_occ, changed_pawns) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -246,42 +220,15 @@ impl Board {
 
         // En passant
         if self.en_passant().as_u8() < 64 {
-            let en_passant_mask = Bitboard::from(self.en_passant());
-            let left_en_passant = ((pawns >> 7) & !FILE_A) & en_passant_mask;
-            for to in left_en_passant {
-                let from = Square(to.as_u8() + 7);
-                let captured_sq = Square(to.as_u8() + 8);
-                let changed_occ = self.occ
-                    ^ Bitboard::from(from)
-                    ^ Bitboard::from(captured_sq)
-                    ^ Bitboard::from(to);
-
-                let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::BP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
-                changed_pieces[Piece::WP as usize] ^= Bitboard::from(captured_sq);
-
-                if !self.is_square_attacked(king_sq, Color::White, changed_occ, &changed_pieces) {
-                    moves.push(Move::new(
-                        from,
-                        to,
-                        Piece::None,
-                        CAPTURE_FLAG | EN_PASSANT_FLAG,
-                    ));
-                }
-            }
-            let right_en_passant = ((pawns >> 9) & !FILE_H) & en_passant_mask;
-            for to in right_en_passant {
-                let from = Square(to.as_u8() + 9);
-                let captured_sq = Square(to.as_u8() + 8);
-                let changed_occ = self.occ
-                    ^ Bitboard::from(from)
-                    ^ Bitboard::from(captured_sq)
-                    ^ Bitboard::from(to);
-                let mut changed_pieces = self.pieces;
-                changed_pieces[Piece::BP as usize] ^= (Bitboard::from(from)) | (Bitboard::from(to));
-                changed_pieces[Piece::WP as usize] ^= Bitboard::from(captured_sq);
-
-                if !self.is_square_attacked(king_sq, Color::White, changed_occ, &changed_pieces) {
+            let to = self.en_passant();
+            let en_passant_mask = Bitboard::from(to);
+            let captured_mask = en_passant_mask >> 8;
+            let attacks = (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns; // Pawn attack table reuse for cache locality
+            for from in attacks {
+                let changed_occ =
+                    self.occ ^ (Bitboard::from(from)) ^ (captured_mask) ^ (en_passant_mask);
+                let changed_pawns = self.pieces[Piece::WP as usize] ^ captured_mask;
+                if !self.is_square_attacked(king_sq, Color::White, changed_occ, changed_pawns) {
                     moves.push(Move::new(
                         from,
                         to,
@@ -802,12 +749,11 @@ impl Board {
         sq: Square,
         attacker: Color,
         occ: Bitboard,
-        pieces: &[Bitboard; 12],
+        pawns: Bitboard,
     ) -> bool {
         let sq_usize = sq.as_usize();
-        let (pawn, pawn_table, knight, bishop, rook, queen, king) = match attacker {
+        let (pawn_table, knight, bishop, rook, queen, king) = match attacker {
             Color::White => (
-                Piece::WP,
                 BLACK_PAWN_ATTACKS,
                 Piece::WN,
                 Piece::WB,
@@ -816,7 +762,6 @@ impl Board {
                 Piece::WK,
             ),
             Color::Black => (
-                Piece::BP,
                 WHITE_PAWN_ATTACKS,
                 Piece::BN,
                 Piece::BB,
@@ -826,15 +771,15 @@ impl Board {
             ),
         };
 
-        if !(pawn_table[sq_usize] & pieces[pawn as usize]).is_empty() {
+        if !(pawn_table[sq_usize] & pawns).is_empty() {
             return true;
         }
 
-        if !(KNIGHT_ATTACKS[sq_usize] & pieces[knight as usize]).is_empty() {
+        if !(KNIGHT_ATTACKS[sq_usize] & self.pieces[knight as usize]).is_empty() {
             return true;
         }
 
-        let diag_attackers = pieces[bishop as usize] | pieces[queen as usize];
+        let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
         if !diag_attackers.is_empty() {
             let diag_mask = BISHOP_MASKS[sq_usize];
             let diag_blockers = occ & diag_mask;
@@ -846,7 +791,7 @@ impl Board {
             }
         }
 
-        let orth_attackers = pieces[rook as usize] | pieces[queen as usize];
+        let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
         if !orth_attackers.is_empty() {
             let orth_mask = ROOK_MASKS[sq_usize];
             let orth_blockers = occ & orth_mask;
@@ -858,7 +803,7 @@ impl Board {
             }
         }
 
-        if !(KING_ATTACKS[sq_usize] & pieces[king as usize]).is_empty() {
+        if !(KING_ATTACKS[sq_usize] & self.pieces[king as usize]).is_empty() {
             return true;
         }
 
