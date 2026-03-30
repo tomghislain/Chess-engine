@@ -619,14 +619,14 @@ impl Board {
 
     pub fn get_legal_moves_list(&self, moves: &mut MoveList) {
         moves.clear();
-        self.feed_legal_moves(&mut |mv| {
+        self.feed_legal_moves(|mv| {
             moves.push(mv);
             ControlFlow::Continue(())
         });
     }
 
-    pub fn feed_legal_moves(&self, f: &mut impl FnMut(Move) -> ControlFlow<()>) {
-        let _ = self.feed_legal_moves_inner(f);
+    pub fn feed_legal_moves(&self, mut f: impl FnMut(Move) -> ControlFlow<()>) {
+        let _ = self.feed_legal_moves_inner(&mut f);
     }
 
     fn feed_legal_moves_inner(

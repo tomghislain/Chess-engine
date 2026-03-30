@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use crate::engine::types::*;
 use crate::engine::{Square, zobrist};
 pub const WK_CASTLE: u8 = 1 << 0;
@@ -604,23 +606,21 @@ impl Board {
             return 1;
         }
 
-        let count = {
-            let moves = &mut move_lists[depth as usize];
-            moves.clear();
-            self.get_legal_moves_list(moves);
-            moves.count
-        };
         if depth == 1 {
-            return count as u64;
+            let mut count = 0;
+            self.feed_legal_moves(|_| {
+                count += 1;
+                ControlFlow::Continue(())
+            });
+            return count;
         }
 
+        let moves = &mut move_lists[depth as usize];
+        self.get_legal_moves_list(moves);
+        let count = moves.count;
         let mut nodes = 0;
-
         for i in 0..count {
-            let mv = {
-                let moves = &move_lists[depth as usize];
-                moves.get(i).unwrap()
-            };
+            let mv = move_lists[depth as usize].get(i).unwrap();
             // println!("Making move at depth {}: {:?}", depth, m);
             self.make_move(mv);
             nodes += self.perft(depth - 1, move_lists);
@@ -664,5 +664,14 @@ impl Board {
         } else {
             -score
         }
+    }
+
+    pub fn has_legal_moves(&self) -> bool {
+        let mut has_legal_moves = false;
+        self.feed_legal_moves(|_| {
+            has_legal_moves = true;
+            ControlFlow::Break(())
+        });
+        has_legal_moves
     }
 }

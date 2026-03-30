@@ -82,7 +82,6 @@ fn run_game(
 ) -> Result<Option<Color>, Box<dyn std::error::Error>> {
     let mut board = Board::new();
     let mut last_move_squares: Option<(Square, Square)> = None;
-    let mut moves = MoveList::new();
     let mut rng: SmallRng = rand::make_rng();
 
     loop {
@@ -116,8 +115,7 @@ fn run_game(
             board.make_move(mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
-            board.get_legal_moves_list(&mut moves);
-            let result = if moves.count == 0 {
+            let result = if !board.has_legal_moves() {
                 board.is_king_checked()
             } else {
                 false
