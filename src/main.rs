@@ -116,7 +116,7 @@ fn run_game(
             board.make_move(mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
-            board.get_legal_moves(&mut moves);
+            board.get_legal_moves_list(&mut moves);
             let result = if moves.count == 0 {
                 board.is_king_checked()
             } else {

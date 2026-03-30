@@ -54,7 +54,7 @@ fn negamax(
     }
 
     let mut moves = MoveList::new();
-    board.get_legal_moves(&mut moves);
+    board.get_legal_moves_list(&mut moves);
     if moves.count == 0 {
         if board.is_king_checked() {
             return -10000 + depth as isize;
@@ -101,7 +101,7 @@ fn negamax(
 
 pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
     let mut moves = MoveList::new();
-    board.get_legal_moves(&mut moves);
+    board.get_legal_moves_list(&mut moves);
     if board.is_draw() || moves.count == 0 {
         return None;
     }

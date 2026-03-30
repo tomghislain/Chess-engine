@@ -2,15 +2,17 @@ use crate::engine::bitboards::*;
 use crate::engine::board::*;
 use crate::engine::types::*;
 
+use std::ops::ControlFlow;
+
 impl Board {
     fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
-        moves: &mut MoveList,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
         move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
-    ) {
+    ) -> ControlFlow<()> {
         let pawns = if IS_WHITE {
             self.pieces[Piece::WP as usize]
         } else {
@@ -48,7 +50,7 @@ impl Board {
             } else {
                 Square(to.as_u8() + 8)
             };
-            moves.push(Move::new(from, to, Piece::None, 0));
+            f(Move::new(from, to, Piece::None, 0))?;
         }
         let double_push = if IS_WHITE {
             ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & move_mask
@@ -61,7 +63,7 @@ impl Board {
             } else {
                 Square(to.as_u8() + 16)
             };
-            moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
+            f(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG))?;
         }
         let enemy_occ = if IS_WHITE {
             self.color_occ[Color::Black as usize]
@@ -80,7 +82,7 @@ impl Board {
             } else {
                 Square(to.as_u8() + 7)
             };
-            moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+            f(Move::new(from, to, Piece::None, CAPTURE_FLAG))?;
         }
 
         let right_captures = if IS_WHITE {
@@ -94,7 +96,7 @@ impl Board {
             } else {
                 Square(to.as_u8() + 9)
             };
-            moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+            f(Move::new(from, to, Piece::None, CAPTURE_FLAG))?;
         }
         // Pinned
         for from in pinned_pawns {
@@ -106,7 +108,7 @@ impl Board {
                 (from_bb >> 8) & empty & move_mask & ray
             };
             for to in single_push {
-                moves.push(Move::new(from, to, Piece::None, 0));
+                f(Move::new(from, to, Piece::None, 0))?;
             }
             let double_push = if IS_WHITE {
                 ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & move_mask & ray
@@ -114,7 +116,7 @@ impl Board {
                 ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & move_mask & ray
             };
             for to in double_push {
-                moves.push(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
+                f(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG))?;
             }
             let attacks = if IS_WHITE {
                 WHITE_PAWN_ATTACKS[from.as_usize()]
@@ -128,7 +130,7 @@ impl Board {
                     & ray
             };
             for to in attacks {
-                moves.push(Move::new(from, to, Piece::None, CAPTURE_FLAG));
+                f(Move::new(from, to, Piece::None, CAPTURE_FLAG))?;
             }
         }
 
@@ -148,7 +150,7 @@ impl Board {
                 Square(to.as_u8() + 8)
             };
             for piece in promotion_pieces {
-                moves.push(Move::new(from, to, piece, PROMOTION_FLAG));
+                f(Move::new(from, to, piece, PROMOTION_FLAG))?;
             }
         }
         let left_captures = if IS_WHITE {
@@ -163,7 +165,7 @@ impl Board {
                 Square(to.as_u8() + 7)
             };
             for piece in promotion_pieces {
-                moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
+                f(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG))?;
             }
         }
 
@@ -179,7 +181,7 @@ impl Board {
                 Square(to.as_u8() + 9)
             };
             for piece in promotion_pieces {
-                moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
+                f(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG))?;
             }
         }
         // Pinned
@@ -198,7 +200,7 @@ impl Board {
             };
             for to in attacks {
                 for piece in promotion_pieces {
-                    moves.push(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG));
+                    f(Move::new(from, to, piece, PROMOTION_FLAG | CAPTURE_FLAG))?;
                 }
             }
         }
@@ -231,24 +233,26 @@ impl Board {
                     changed_occ,
                     changed_pawns,
                 ) {
-                    moves.push(Move::new(
+                    f(Move::new(
                         from,
                         to,
                         Piece::None,
                         CAPTURE_FLAG | EN_PASSANT_FLAG,
-                    ));
+                    ))?;
                 }
             }
         }
+
+        ControlFlow::Continue(())
     }
 
     fn get_knight_moves(
         &self,
-        moves: &mut MoveList,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
         knights: Bitboard,
         move_mask: Bitboard,
         pinned: Bitboard,
-    ) {
+    ) -> ControlFlow<()> {
         let side_to_move = self.side_to_move;
         let free_knights = knights & !pinned;
         for from in free_knights {
@@ -263,19 +267,20 @@ impl Board {
                     CAPTURE_FLAG
                 };
 
-                moves.push(Move::new(from, to, Piece::None, flag));
+                f(Move::new(from, to, Piece::None, flag))?;
             }
         }
+        ControlFlow::Continue(())
     }
 
     fn get_sliding_moves<const IS_ROOK: bool, const IS_BISHOP: bool>(
         &self,
-        moves: &mut MoveList,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
         pieces: Bitboard,
         move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
-    ) {
+    ) -> ControlFlow<()> {
         let free_pieces = pieces & !pinned;
         let pinned_pieces = pieces & pinned;
         let base_mask = !self.color_occ[self.side_to_move as usize] & move_mask;
@@ -301,7 +306,7 @@ impl Board {
                 } else {
                     CAPTURE_FLAG
                 };
-                moves.push(Move::new(from, to, Piece::None, flag));
+                f(Move::new(from, to, Piece::None, flag))?;
             }
         }
         for from in pinned_pieces {
@@ -326,9 +331,10 @@ impl Board {
                 } else {
                     CAPTURE_FLAG
                 };
-                moves.push(Move::new(from, to, Piece::None, flag));
+                f(Move::new(from, to, Piece::None, flag))?;
             }
         }
+        ControlFlow::Continue(())
     }
 
     fn compute_danger(&self, king_sq: Square) -> Bitboard {
@@ -380,7 +386,12 @@ impl Board {
         danger
     }
 
-    fn get_king_moves(&self, moves: &mut MoveList, king_sq: Square, danger_mask: Bitboard) {
+    fn get_king_moves(
+        &self,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
+        king_sq: Square,
+        danger_mask: Bitboard,
+    ) -> ControlFlow<()> {
         let side_to_move = self.side_to_move;
         let attacks = KING_ATTACKS[king_sq.as_usize()]
             & !self.color_occ[side_to_move as usize]
@@ -392,8 +403,9 @@ impl Board {
                 CAPTURE_FLAG
             };
 
-            moves.push(Move::new(king_sq, to, Piece::None, flag));
+            f(Move::new(king_sq, to, Piece::None, flag))?;
         }
+        ControlFlow::Continue(())
     }
 
     pub fn compute_checkers(
@@ -491,7 +503,11 @@ impl Board {
         }
     }
 
-    fn gen_castling_moves(&self, moves: &mut MoveList, king_danger_squares: Bitboard) {
+    fn gen_castling_moves(
+        &self,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
+        king_danger_squares: Bitboard,
+    ) -> ControlFlow<()> {
         let castling_rights = self.castling();
         match self.side_to_move {
             Color::White => {
@@ -504,7 +520,7 @@ impl Board {
                             | Bitboard::from(Square(6))))
                     .is_empty()
                 {
-                    moves.push(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
+                    f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG))?;
                 }
                 if castling_rights & WQ_CASTLE != 0
                     && (self.occ
@@ -518,7 +534,7 @@ impl Board {
                             | Bitboard::from(Square(2))))
                     .is_empty()
                 {
-                    moves.push(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
+                    f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG))?;
                 }
             }
             Color::Black => {
@@ -531,12 +547,12 @@ impl Board {
                             | Bitboard::from(Square(62))))
                     .is_empty()
                 {
-                    moves.push(Move::new(
+                    f(Move::new(
                         Square(60),
                         Square(62),
                         Piece::None,
                         CASTLING_FLAG,
-                    ));
+                    ))?;
                 }
                 if castling_rights & BQ_CASTLE != 0
                     && (self.occ
@@ -550,25 +566,26 @@ impl Board {
                             | Bitboard::from(Square(58))))
                     .is_empty()
                 {
-                    moves.push(Move::new(
+                    f(Move::new(
                         Square(60),
                         Square(58),
                         Piece::None,
                         CASTLING_FLAG,
-                    ));
+                    ))?;
                 }
             }
         };
+        ControlFlow::Continue(())
     }
 
     fn get_non_king_moves(
         &self,
-        moves: &mut MoveList,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
         move_mask: Bitboard,
         pinned: Bitboard,
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
-    ) {
+    ) -> ControlFlow<()> {
         match self.side_to_move {
             Color::White => {
                 let (knights, rooks, bishops, queens) = (
@@ -577,11 +594,11 @@ impl Board {
                     self.pieces[Piece::WB as usize],
                     self.pieces[Piece::WQ as usize],
                 );
-                self.get_pawn_moves::<true>(moves, move_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(moves, knights, move_mask, pinned);
-                self.get_sliding_moves::<true, false>(moves, rooks, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<false, true>(moves, bishops, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<true, true>(moves, queens, move_mask, pinned, pin_rays);
+                self.get_pawn_moves::<true>(f, move_mask, pinned, pin_rays, king_sq)?;
+                self.get_knight_moves(f, knights, move_mask, pinned)?;
+                self.get_sliding_moves::<true, false>(f, rooks, move_mask, pinned, pin_rays)?;
+                self.get_sliding_moves::<false, true>(f, bishops, move_mask, pinned, pin_rays)?;
+                self.get_sliding_moves::<true, true>(f, queens, move_mask, pinned, pin_rays)?;
             }
             Color::Black => {
                 let (knights, rooks, bishops, queens) = (
@@ -590,17 +607,32 @@ impl Board {
                     self.pieces[Piece::BB as usize],
                     self.pieces[Piece::BQ as usize],
                 );
-                self.get_pawn_moves::<false>(moves, move_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(moves, knights, move_mask, pinned);
-                self.get_sliding_moves::<true, false>(moves, rooks, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<false, true>(moves, bishops, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<true, true>(moves, queens, move_mask, pinned, pin_rays);
+                self.get_pawn_moves::<false>(f, move_mask, pinned, pin_rays, king_sq)?;
+                self.get_knight_moves(f, knights, move_mask, pinned)?;
+                self.get_sliding_moves::<true, false>(f, rooks, move_mask, pinned, pin_rays)?;
+                self.get_sliding_moves::<false, true>(f, bishops, move_mask, pinned, pin_rays)?;
+                self.get_sliding_moves::<true, true>(f, queens, move_mask, pinned, pin_rays)?;
             }
         };
+        ControlFlow::Continue(())
     }
 
-    pub fn get_legal_moves(&self, moves: &mut MoveList) {
+    pub fn get_legal_moves_list(&self, moves: &mut MoveList) {
         moves.clear();
+        self.feed_legal_moves(&mut |mv| {
+            moves.push(mv);
+            ControlFlow::Continue(())
+        });
+    }
+
+    pub fn feed_legal_moves(&self, f: &mut impl FnMut(Move) -> ControlFlow<()>) {
+        let _ = self.feed_legal_moves_inner(f);
+    }
+
+    fn feed_legal_moves_inner(
+        &self,
+        f: &mut impl FnMut(Move) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
         let side_to_move = self.side_to_move;
 
         let king_sq = Square(
@@ -615,12 +647,12 @@ impl Board {
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
-        self.get_king_moves(moves, king_sq, king_danger_mask);
+        self.get_king_moves(f, king_sq, king_danger_mask)?;
         let checkers: Bitboard =
             self.compute_checkers(king_sq, self.occ, side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
 
         if checkers.count_ones() > 1 {
-            return; // If it is a double check, only king moves can be legal
+            return ControlFlow::Continue(()); // If it is a double check, only king moves can be legal
         }
 
         // pinned: bitmap of pieces that cannot move because they would put the king in check
@@ -632,11 +664,13 @@ impl Board {
         let move_mask = if in_check {
             self.compute_block_mask(king_sq, checkers) | checkers
         } else {
-            self.gen_castling_moves(moves, king_danger_mask); // Castling moves can only happen when not in check
+            self.gen_castling_moves(f, king_danger_mask)?; // Castling moves can only happen when not in check
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
-        self.get_non_king_moves(moves, move_mask, pinned, &pin_rays, king_sq);
+        self.get_non_king_moves(f, move_mask, pinned, &pin_rays, king_sq)?;
+
+        ControlFlow::Continue(())
     }
 
     pub fn is_square_attacked(

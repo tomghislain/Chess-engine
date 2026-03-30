@@ -607,7 +607,7 @@ impl Board {
         let count = {
             let moves = &mut move_lists[depth as usize];
             moves.clear();
-            self.get_legal_moves(moves);
+            self.get_legal_moves_list(moves);
             moves.count
         };
         if depth == 1 {

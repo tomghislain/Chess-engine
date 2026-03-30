@@ -4,7 +4,7 @@ use rand::rngs::SmallRng;
 
 pub fn get_random_move(board: &mut Board, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
-    board.get_legal_moves(&mut moves);
+    board.get_legal_moves_list(&mut moves);
     if moves.count == 0 || board.is_draw() {
         return None;
     };
@@ -27,7 +27,7 @@ impl Node {
     fn new(board: &Board, parent: NodeIndex, parent_move: Move) -> Self {
         let mut moves = MoveList::new();
         if !board.is_draw() {
-            board.get_legal_moves(&mut moves);
+            board.get_legal_moves_list(&mut moves);
         }
         Node {
             parent: Some(parent),
@@ -47,7 +47,7 @@ struct Tree {
 impl Tree {
     fn new(board: &mut Board) -> Self {
         let mut moves = MoveList::new();
-        board.get_legal_moves(&mut moves);
+        board.get_legal_moves_list(&mut moves);
         Tree {
             nodes: vec![Node {
                 parent: None,
@@ -120,7 +120,7 @@ impl Tree {
     fn rollout(&self, board: &mut Board, move_buffer: &mut MoveList, rng: &mut SmallRng) -> f32 {
         let starting_player = board.side_to_move;
         while !board.is_draw() {
-            board.get_legal_moves(move_buffer);
+            board.get_legal_moves_list(move_buffer);
             let num_moves = move_buffer.count;
             if num_moves == 0 {
                 if board.is_king_checked() {
@@ -153,7 +153,7 @@ impl Tree {
 
 pub fn mcts_search(board: &mut Board, iteration_number: usize, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
-    board.get_legal_moves(&mut moves);
+    board.get_legal_moves_list(&mut moves);
     if board.is_draw() || moves.count == 0 {
         return None;
     }

@@ -127,7 +127,7 @@ pub fn get_player_move(
     previous_move_squares: Option<(Square, Square)>,
 ) -> Option<Move> {
     let mut moves = MoveList::new();
-    board.get_legal_moves(&mut moves);
+    board.get_legal_moves_list(&mut moves);
     if moves.count == 0 || board.is_draw() {
         return None;
     };
