@@ -2,7 +2,7 @@ use crate::engine::{Board, Move, MoveList};
 use rand::RngExt;
 use rand::rngs::SmallRng;
 
-pub fn get_random_move(board: &mut Board, rng: &mut SmallRng) -> Option<Move> {
+pub fn get_random_move(board: &Board, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
     board.get_legal_moves_list(&mut moves);
     if moves.count == 0 || board.is_draw() {

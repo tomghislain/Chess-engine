@@ -126,16 +126,15 @@ pub fn get_player_move(
     board: &mut Board,
     previous_move_squares: Option<(Square, Square)>,
 ) -> Option<Move> {
-    let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
-    if moves.count == 0 || board.is_draw() {
+    if !board.has_legal_moves() || board.is_draw() {
         return None;
     };
     let mut stdout = std::io::stdout();
     let _ = execute!(stdout, event::EnableMouseCapture);
     let _ = execute!(stdout, cursor::Hide);
     let mut from: Option<u8> = None;
-    let mut moves_from = moves.clone();
+    let mut moves = MoveList::new();
+    board.get_legal_moves_list(&mut moves);
     loop {
         let read_event = event::read();
         if let Ok(event::Event::Mouse(event::MouseEvent {
@@ -146,7 +145,7 @@ pub fn get_player_move(
             let clicked = coords_to_sq(column, row);
             if let Some(clicked_sq) = clicked {
                 if from.is_some() {
-                    let valid_moves: Vec<&Move> = moves_from
+                    let valid_moves: Vec<&Move> = moves
                         .iter()
                         .filter(|m| m.to() == Square(clicked_sq))
                         .collect();
@@ -163,7 +162,7 @@ pub fn get_player_move(
                         );
                     } else {
                         from = Some(clicked_sq);
-                        moves_from = moves
+                        moves = moves
                             .iter()
                             .filter_map(|&m| {
                                 if m.from() == Square(clicked_sq) {
@@ -176,7 +175,7 @@ pub fn get_player_move(
                     }
                 } else {
                     from = Some(clicked_sq);
-                    moves_from = moves_from
+                    moves = moves
                         .iter()
                         .filter_map(|&m| {
                             if m.from() == Square(clicked_sq) {
@@ -189,7 +188,7 @@ pub fn get_player_move(
                 }
             }
             let possible_to_squares = if from.is_some() {
-                moves_from.iter().map(|m| m.to()).collect()
+                moves.iter().map(|m| m.to()).collect()
             } else {
                 Vec::new()
             };

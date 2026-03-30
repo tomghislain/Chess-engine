@@ -100,9 +100,7 @@ fn negamax(
 }
 
 pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
-    let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
-    if board.is_draw() || moves.count == 0 {
+    if board.is_draw() || !board.has_legal_moves() {
         return None;
     }
     let mut tt = TranspositionTable::new();
@@ -111,6 +109,8 @@ pub fn search_root(board: &mut Board, depth: u8) -> Option<Move> {
     let mut best_score = isize::MIN;
     let mut best_move = None;
 
+    let mut moves = MoveList::new();
+    board.get_legal_moves_list(&mut moves);
     for mv in moves.iter() {
         board.make_move(*mv);
         let score = -negamax(board, depth, alpha, beta, &mut tt);

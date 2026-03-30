@@ -102,7 +102,7 @@ fn run_game(
                 }
                 gui::get_player_move(&mut board, last_move_squares)
             }
-            PlayerType::RandomMove => mcts::get_random_move(&mut board, &mut rng),
+            PlayerType::RandomMove => mcts::get_random_move(&board, &mut rng),
             PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
             PlayerType::Mcts { iterations } => mcts::mcts_search(&mut board, iterations, &mut rng),
         };
