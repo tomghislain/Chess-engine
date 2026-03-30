@@ -227,7 +227,7 @@ impl Board {
                 } else {
                     self.pieces[Piece::WP as usize] ^ captured_mask
                 };
-                if !self.is_square_attacked(
+                if !self.would_en_passant_check(
                     king_sq,
                     if IS_WHITE { Color::Black } else { Color::White },
                     changed_occ,
@@ -244,6 +244,60 @@ impl Board {
         }
 
         ControlFlow::Continue(())
+    }
+
+    fn would_en_passant_check(
+        &self,
+        sq: Square,
+        attacker: Color,
+        changed_occ: Bitboard,
+        attacker_pawns: Bitboard,
+    ) -> bool {
+        let sq_usize = sq.as_usize();
+        let (pawn_table, attacker_bishops, attacker_rooks, attacker_queens) = match attacker {
+            Color::White => (
+                BLACK_PAWN_ATTACKS,
+                self.pieces[Piece::WB as usize],
+                self.pieces[Piece::WR as usize],
+                self.pieces[Piece::WQ as usize],
+            ),
+            Color::Black => (
+                WHITE_PAWN_ATTACKS,
+                self.pieces[Piece::BB as usize],
+                self.pieces[Piece::BR as usize],
+                self.pieces[Piece::BQ as usize],
+            ),
+        };
+
+        if !(pawn_table[sq_usize] & attacker_pawns).is_empty() {
+            return true;
+        }
+
+        let diag_attackers = attacker_bishops | attacker_queens;
+        if !diag_attackers.is_empty() {
+            let diag_mask = BISHOP_MASKS[sq_usize];
+            let diag_blockers = changed_occ & diag_mask;
+            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize])
+                >> BISHOP_SHIFTS[sq_usize]) as usize;
+            let diag_attacks = BISHOP_ATTACKS[sq_usize][diag_idx];
+            if !(diag_attacks & diag_attackers).is_empty() {
+                return true;
+            }
+        }
+
+        let orth_attackers = attacker_rooks | attacker_queens;
+        if !orth_attackers.is_empty() {
+            let orth_mask = ROOK_MASKS[sq_usize];
+            let orth_blockers = changed_occ & orth_mask;
+            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize])
+                >> ROOK_SHIFTS[sq_usize]) as usize;
+            let orth_attacks = ROOK_ATTACKS[sq_usize][orth_idx];
+            if !(orth_attacks & orth_attackers).is_empty() {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn get_knight_moves(
@@ -408,30 +462,25 @@ impl Board {
         ControlFlow::Continue(())
     }
 
-    pub fn compute_checkers(
-        &self,
-        king_sq: Square,
-        occ: Bitboard,
-        attacker_color: Color,
-        pieces: &[Bitboard; 12],
-    ) -> Bitboard {
+    pub fn compute_checkers(&self, king_sq: Square) -> Bitboard {
         let mut checkers = Bitboard(0);
-        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = match attacker_color {
-            Color::Black => (
-                pieces[Piece::BP as usize],
-                WHITE_PAWN_ATTACKS,
-                pieces[Piece::BN as usize],
-                pieces[Piece::BR as usize] | pieces[Piece::BQ as usize],
-                pieces[Piece::BB as usize] | pieces[Piece::BQ as usize],
-            ),
-            Color::White => (
-                pieces[Piece::WP as usize],
-                BLACK_PAWN_ATTACKS,
-                pieces[Piece::WN as usize],
-                pieces[Piece::WR as usize] | pieces[Piece::WQ as usize],
-                pieces[Piece::WB as usize] | pieces[Piece::WQ as usize],
-            ),
-        };
+        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) =
+            match self.side_to_move.flip() {
+                Color::Black => (
+                    self.pieces[Piece::BP as usize],
+                    WHITE_PAWN_ATTACKS,
+                    self.pieces[Piece::BN as usize],
+                    self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
+                    self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
+                ),
+                Color::White => (
+                    self.pieces[Piece::WP as usize],
+                    BLACK_PAWN_ATTACKS,
+                    self.pieces[Piece::WN as usize],
+                    self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
+                    self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+                ),
+            };
         let pawn_attacks = pawn_attack_table[king_sq.as_usize()];
         checkers |= pawn_attacks & pawns;
 
@@ -439,14 +488,14 @@ impl Board {
         checkers |= knight_attacks & knights;
 
         let diag_mask = BISHOP_MASKS[king_sq.as_usize()];
-        let diag_blockers = diag_mask & occ;
+        let diag_blockers = diag_mask & self.occ;
         let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[king_sq.as_usize()])
             >> BISHOP_SHIFTS[king_sq.as_usize()]) as usize;
         let diag_attacks = BISHOP_ATTACKS[king_sq.as_usize()][diag_idx];
         checkers |= diag_attacks & diag_pieces;
 
         let orth_mask = ROOK_MASKS[king_sq.as_usize()];
-        let orth_blockers = orth_mask & occ;
+        let orth_blockers = orth_mask & self.occ;
         let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[king_sq.as_usize()])
             >> ROOK_SHIFTS[king_sq.as_usize()]) as usize;
         let orth_attacks = ROOK_ATTACKS[king_sq.as_usize()][orth_idx];
@@ -648,8 +697,7 @@ impl Board {
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
         self.get_king_moves(f, king_sq, king_danger_mask)?;
-        let checkers: Bitboard =
-            self.compute_checkers(king_sq, self.occ, side_to_move.flip(), &self.pieces); // Bitmap of pieces that put the king in check
+        let checkers: Bitboard = self.compute_checkers(king_sq); // Bitmap of pieces that put the king in check
 
         if checkers.count_ones() > 1 {
             return ControlFlow::Continue(()); // If it is a double check, only king moves can be legal
@@ -673,17 +721,12 @@ impl Board {
         ControlFlow::Continue(())
     }
 
-    pub fn is_square_attacked(
-        &self,
-        sq: Square,
-        attacker: Color,
-        occ: Bitboard,
-        pawns: Bitboard,
-    ) -> bool {
+    pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
         let sq_usize = sq.as_usize();
-        let (pawn_table, knight, bishop, rook, queen, king) = match attacker {
+        let (pawn_table, pawn, knight, bishop, rook, queen, king) = match attacker {
             Color::White => (
                 BLACK_PAWN_ATTACKS,
+                Piece::WP,
                 Piece::WN,
                 Piece::WB,
                 Piece::WR,
@@ -692,6 +735,7 @@ impl Board {
             ),
             Color::Black => (
                 WHITE_PAWN_ATTACKS,
+                Piece::BP,
                 Piece::BN,
                 Piece::BB,
                 Piece::BR,
@@ -700,7 +744,7 @@ impl Board {
             ),
         };
 
-        if !(pawn_table[sq_usize] & pawns).is_empty() {
+        if !(pawn_table[sq_usize] & self.pieces[pawn as usize]).is_empty() {
             return true;
         }
 
@@ -711,7 +755,7 @@ impl Board {
         let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
         if !diag_attackers.is_empty() {
             let diag_mask = BISHOP_MASKS[sq_usize];
-            let diag_blockers = occ & diag_mask;
+            let diag_blockers = self.occ & diag_mask;
             let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize])
                 >> BISHOP_SHIFTS[sq_usize]) as usize;
             let diag_attacks = BISHOP_ATTACKS[sq_usize][diag_idx];
@@ -723,7 +767,7 @@ impl Board {
         let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
         if !orth_attackers.is_empty() {
             let orth_mask = ROOK_MASKS[sq_usize];
-            let orth_blockers = occ & orth_mask;
+            let orth_blockers = self.occ & orth_mask;
             let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize])
                 >> ROOK_SHIFTS[sq_usize]) as usize;
             let orth_attacks = ROOK_ATTACKS[sq_usize][orth_idx];
