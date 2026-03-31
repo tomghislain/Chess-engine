@@ -1,4 +1,4 @@
-use crate::engine::{Board, Move, MoveList, Piece, Square, types};
+use crate::engine::{Board, Move, MoveList, Piece, Square, board::BoardHistory, types};
 use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 
@@ -34,8 +34,8 @@ fn sq_to_top_left(sq: u8) -> (u16, u16) {
     (col, row)
 }
 
-pub fn display_board(
-    board: &Board,
+pub fn display_board<H: BoardHistory>(
+    board: &Board<H>,
     previous_move_squares: Option<(Square, Square)>,
     move_from: Option<u8>,
     possible_to_squares: Vec<Square>,
@@ -122,8 +122,8 @@ fn coords_to_sq(col: u16, row: u16) -> Option<u8> {
     }
 }
 
-pub fn get_player_move(
-    board: &mut Board,
+pub fn get_player_move<H: BoardHistory>(
+    board: &mut Board<H>,
     previous_move_squares: Option<(Square, Square)>,
 ) -> Option<Move> {
     if !board.has_legal_moves() || board.is_draw() {
@@ -280,7 +280,7 @@ fn get_promotion_piece(sq: u8, color: types::Color) -> Piece {
     }
 }
 
-pub fn print_game_result(board: &Board, result: bool) {
+pub fn print_game_result<H: BoardHistory>(board: &Board<H>, result: bool) {
     let mut stdout = std::io::stdout();
 
     let result_row = 8 * SQ_HEIGHT;

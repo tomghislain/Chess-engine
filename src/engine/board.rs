@@ -92,7 +92,7 @@ pub struct FullHistory {
 
 #[derive(Clone)]
 pub struct MctsHistory {
-    hash_history: [u64; 100],
+    hash_history: [u64; 101],
     halfmove_clock: u8,
     en_passant: Square,
     castling: u8,
@@ -482,7 +482,42 @@ impl Board<FullHistory> {
         }
         nodes
     }
+
+    pub fn to_mcts_board(&self) -> Board<MctsHistory> {
+        let halfmove_clock = self.history.halfmove_clock() as usize;
+        let mut hash_history = [0; 101];
+        for i in 0..halfmove_clock {
+            hash_history[i] = self.history.hash_history[self.history.ply - halfmove_clock + i];
+        }
+        Board {
+            pieces: self.pieces,
+            color_occ: self.color_occ,
+            mailbox: self.mailbox,
+            occ: self.occ,
+            side_to_move: self.side_to_move,
+            history: MctsHistory {
+                hash_history,
+                halfmove_clock: halfmove_clock as u8,
+                en_passant: self.history.en_passant(),
+                castling: self.history.castling(),
+            },
+        }
+    }
 }
+
+impl Clone for Board<MctsHistory> {
+    fn clone(&self) -> Self {
+        Board {
+            pieces: self.pieces,
+            color_occ: self.color_occ,
+            mailbox: self.mailbox,
+            occ: self.occ,
+            side_to_move: self.side_to_move,
+            history: self.history.clone(),
+        }
+    }
+}
+
 impl<H: BoardHistory> Board<H> {
     pub fn castling(&self) -> u8 {
         self.history.castling()

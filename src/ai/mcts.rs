@@ -1,4 +1,4 @@
-use crate::engine::board::BoardHistory;
+use crate::engine::board::{BoardHistory, FullHistory, MctsHistory};
 use crate::engine::{Board, Move, MoveList};
 use rand::RngExt;
 use rand::rngs::SmallRng;
@@ -25,7 +25,7 @@ struct Node {
 }
 
 impl Node {
-    fn new<H: BoardHistory>(board: &Board<H>, parent: NodeIndex, parent_move: Move) -> Self {
+    fn new(board: &Board<MctsHistory>, parent: NodeIndex, parent_move: Move) -> Self {
         let mut moves = MoveList::new();
         if !board.is_draw() {
             board.get_legal_moves_list(&mut moves);
@@ -87,7 +87,7 @@ impl Tree {
         best_child
     }
 
-    fn select<H: BoardHistory>(&self, board: &mut Board<H>) -> NodeIndex {
+    fn select(&self, board: &mut Board<MctsHistory>) -> NodeIndex {
         let mut current: NodeIndex = 0; // Start at root
         while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
@@ -102,9 +102,9 @@ impl Tree {
         current
     }
 
-    fn expand<H: BoardHistory>(
+    fn expand(
         &mut self,
-        board: &mut Board<H>,
+        board: &mut Board<MctsHistory>,
         node: NodeIndex,
         rng: &mut SmallRng,
     ) -> NodeIndex {
@@ -123,9 +123,9 @@ impl Tree {
         }
     }
 
-    fn rollout<H: BoardHistory>(
+    fn rollout(
         &self,
-        board: &mut Board<H>,
+        board: &mut Board<MctsHistory>,
         move_buffer: &mut MoveList,
         rng: &mut SmallRng,
     ) -> f32 {
@@ -162,8 +162,8 @@ impl Tree {
     }
 }
 
-pub fn mcts_search<H: BoardHistory>(
-    board: &mut Board<H>,
+pub fn mcts_search(
+    board: &mut Board<FullHistory>,
     iteration_number: usize,
     rng: &mut SmallRng,
 ) -> Option<Move> {
@@ -175,10 +175,10 @@ pub fn mcts_search<H: BoardHistory>(
 
     // Create tree
     let mut tree = Tree::new(board);
-    let mut iteration_board;
+    let mcts_board = board.to_mcts_board();
     // Iterate over the tree
     for _ in 0..iteration_number {
-        iteration_board = board.clone();
+        let mut iteration_board = mcts_board.clone();
         let selected_node = tree.select(&mut iteration_board);
         let new_node = tree.expand(&mut iteration_board, selected_node, rng);
         let score = tree.rollout(&mut iteration_board, &mut moves, rng);
