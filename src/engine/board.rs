@@ -1,5 +1,3 @@
-use std::ops::ControlFlow;
-
 use crate::engine::types::*;
 use crate::engine::{Square, zobrist};
 pub const WK_CASTLE: u8 = 1 << 0;
@@ -465,7 +463,6 @@ impl Board<FullHistory> {
             let mut count = 0;
             self.feed_legal_moves(|_| {
                 count += 1;
-                ControlFlow::Continue(())
             });
             return count;
         }
@@ -801,12 +798,15 @@ impl<H: BoardHistory> Board<H> {
         }
     }
 
-    pub fn has_legal_moves(&self) -> bool {
-        let mut has_legal_moves = false;
+    pub fn count_legal_moves(&self) -> usize {
+        let mut count = 0;
         self.feed_legal_moves(|_| {
-            has_legal_moves = true;
-            ControlFlow::Break(())
+            count += 1;
         });
-        has_legal_moves
+        count
+    }
+
+    pub fn has_legal_moves(&self) -> bool {
+        self.count_legal_moves() != 0
     }
 }
