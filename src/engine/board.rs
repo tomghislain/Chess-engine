@@ -722,11 +722,11 @@ impl<H: BoardHistory> Board<H> {
 
     fn insufficient_minors(&self, knights: Bitboard, bishops: Bitboard) -> bool {
         if !knights.is_empty() && !bishops.is_empty() {
-            true
+            false
         } else if !bishops.is_empty() && knights.is_empty() {
             self.bishops_same_color(bishops)
         } else {
-            false
+            knights.count_ones() == 1
         }
     }
 
