@@ -21,22 +21,26 @@ struct Node {
     untried_moves: MoveList,
     visits: u32,
     wins: f32,
-    move_from_parent: Option<Move>,
+    parent_move: Option<Move>,
 }
 
 impl Node {
-    fn new(board: &Board<MctsHistory>, parent: NodeIndex, parent_move: Move) -> Self {
+    fn new(
+        board: &Board<MctsHistory>,
+        parent: Option<NodeIndex>,
+        parent_move: Option<Move>,
+    ) -> Self {
         let mut moves = MoveList::new();
         if !board.is_draw() {
             board.get_legal_moves_list(&mut moves);
         }
         Node {
-            parent: Some(parent),
+            parent,
             children: Vec::new(),
             untried_moves: moves,
             visits: 0,
             wins: 0.0,
-            move_from_parent: Some(parent_move),
+            parent_move,
         }
     }
 }
@@ -46,18 +50,11 @@ struct Tree {
 }
 
 impl Tree {
-    fn new<H: BoardHistory>(board: &mut Board<H>) -> Self {
+    fn new(board: &Board<MctsHistory>) -> Self {
         let mut moves = MoveList::new();
         board.get_legal_moves_list(&mut moves);
         Tree {
-            nodes: vec![Node {
-                parent: None,
-                children: Vec::new(),
-                untried_moves: moves,
-                visits: 0,
-                wins: 0.0,
-                move_from_parent: None,
-            }],
+            nodes: vec![Node::new(board, None, None)],
         }
     }
 
@@ -93,7 +90,7 @@ impl Tree {
             && !self.nodes[current].children.is_empty()
         {
             if let Some(best_child_index) = self.best_uct_child(current) {
-                board.make_move(self.nodes[best_child_index].move_from_parent.unwrap());
+                board.make_move(self.nodes[best_child_index].parent_move.unwrap());
                 current = best_child_index;
             } else {
                 break;
@@ -115,7 +112,8 @@ impl Tree {
         if let Some(untried_move) = self.nodes[node].untried_moves.swap_pop(index) {
             board.make_move(untried_move);
             let child_idx = self.nodes.len();
-            self.nodes.push(Node::new(board, node, untried_move));
+            self.nodes
+                .push(Node::new(board, Some(node), Some(untried_move)));
             self.nodes[node].children.push(child_idx);
             child_idx
         } else {
@@ -167,15 +165,15 @@ pub fn mcts_search(
     iteration_number: usize,
     rng: &mut SmallRng,
 ) -> Option<Move> {
+    let mcts_board = board.to_mcts_board();
     let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
+    mcts_board.get_legal_moves_list(&mut moves);
     if board.is_draw() || moves.count == 0 {
         return None;
     }
 
     // Create tree
-    let mut tree = Tree::new(board);
-    let mcts_board = board.to_mcts_board();
+    let mut tree = Tree::new(&mcts_board);
     // Iterate over the tree
     for _ in 0..iteration_number {
         let mut iteration_board = mcts_board.clone();
@@ -189,5 +187,5 @@ pub fn mcts_search(
         .children
         .iter()
         .max_by_key(|&&c| tree.nodes[c].visits)
-        .and_then(|&c| tree.nodes[c].move_from_parent)
+        .and_then(|&c| tree.nodes[c].parent_move)
 }
