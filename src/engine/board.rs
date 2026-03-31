@@ -84,8 +84,137 @@ pub struct State {
     pub halfmove_clock: u8,
 }
 
+pub struct FullHistory {
+    hash_history: [u64; MAX_GAME_LENGTH],
+    state_stack: [State; MAX_GAME_LENGTH],
+    ply: usize,
+}
+
 #[derive(Clone)]
-pub struct Board {
+pub struct MctsHistory {
+    hash_history: [u64; 100],
+    halfmove_clock: u8,
+    en_passant: Square,
+    castling: u8,
+}
+
+pub trait BoardHistory {
+    fn castling(&self) -> u8;
+    fn en_passant(&self) -> Square;
+    fn halfmove_clock(&self) -> u8;
+    fn zobrist(&self) -> u64;
+    fn push(
+        &mut self,
+        hash: u64,
+        castling: u8,
+        en_passant: Square,
+        halfmove_clock: u8,
+        captured_piece: Piece,
+    );
+    fn is_repetition(&self) -> bool;
+}
+
+impl BoardHistory for FullHistory {
+    fn castling(&self) -> u8 {
+        self.state_stack[self.ply].castling
+    }
+    fn en_passant(&self) -> Square {
+        self.state_stack[self.ply].en_passant
+    }
+    fn halfmove_clock(&self) -> u8 {
+        self.state_stack[self.ply].halfmove_clock
+    }
+    fn zobrist(&self) -> u64 {
+        self.hash_history[self.ply]
+    }
+    fn push(
+        &mut self,
+        hash: u64,
+        castling: u8,
+        en_passant: Square,
+        halfmove_clock: u8,
+        captured_piece: Piece,
+    ) {
+        self.ply += 1;
+        self.hash_history[self.ply] = hash;
+        self.state_stack[self.ply] =
+            State::new(captured_piece, castling, en_passant, halfmove_clock);
+    }
+    fn is_repetition(&self) -> bool {
+        let current = self.zobrist();
+        let start = self.ply.saturating_sub(self.halfmove_clock() as usize);
+        self.hash_history[start..self.ply]
+            .iter()
+            .rev()
+            .step_by(2)
+            .filter(|&&h| h == current)
+            .count()
+            >= 2
+    }
+}
+impl FullHistory {
+    fn new() -> Self {
+        let zobrist = 0;
+        let hash_history = [zobrist; MAX_GAME_LENGTH];
+        let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
+        let en_passant = Square(64);
+        let halfmove_clock = 0;
+        let state = State::new(Piece::None, castling, en_passant, halfmove_clock);
+        let state_stack = [state; MAX_GAME_LENGTH];
+
+        let ply = 0;
+        FullHistory {
+            hash_history,
+            state_stack,
+            ply,
+        }
+    }
+    fn pop(&mut self) -> Piece {
+        let captured = self.state_stack[self.ply].captured_piece;
+        self.ply -= 1;
+        captured
+    }
+}
+
+impl BoardHistory for MctsHistory {
+    fn castling(&self) -> u8 {
+        self.castling
+    }
+    fn en_passant(&self) -> Square {
+        self.en_passant
+    }
+    fn halfmove_clock(&self) -> u8 {
+        self.halfmove_clock
+    }
+    fn zobrist(&self) -> u64 {
+        self.hash_history[self.halfmove_clock as usize]
+    }
+    fn push(
+        &mut self,
+        hash: u64,
+        castling: u8,
+        en_passant: Square,
+        halfmove_clock: u8,
+        _captured_piece: Piece,
+    ) {
+        self.castling = castling;
+        self.en_passant = en_passant;
+        self.halfmove_clock = halfmove_clock;
+        self.hash_history[self.halfmove_clock as usize] = hash;
+    }
+    fn is_repetition(&self) -> bool {
+        let current = self.hash_history[self.halfmove_clock as usize];
+        self.hash_history[..self.halfmove_clock as usize]
+            .iter()
+            .rev()
+            .step_by(2)
+            .filter(|&&h| h == current)
+            .count()
+            >= 2
+    }
+}
+
+pub struct Board<H: BoardHistory> {
     pub pieces: [Bitboard; 12],
     pub color_occ: [Bitboard; 2],
     pub mailbox: [Piece; 64],
@@ -93,9 +222,7 @@ pub struct Board {
 
     pub side_to_move: Color,
 
-    pub history: [u64; MAX_GAME_LENGTH],
-    pub state_stack: [State; MAX_GAME_LENGTH],
-    pub ply: usize,
+    history: H,
 }
 
 impl State {
@@ -113,48 +240,8 @@ impl State {
         }
     }
 }
-impl Board {
-    pub fn castling(&self) -> u8 {
-        self.state_stack[self.ply].castling
-    }
-    pub fn en_passant(&self) -> Square {
-        self.state_stack[self.ply].en_passant
-    }
-    pub fn zobrist(&self) -> u64 {
-        self.history[self.ply]
-    }
-    fn halfmove_clock(&self) -> u8 {
-        self.state_stack[self.ply].halfmove_clock
-    }
-    fn compute_zobrist(&self) -> u64 {
-        let z = zobrist::zobrist();
-        let mut hash = 0;
 
-        // Pieces
-        for (i, &bb) in self.pieces.iter().enumerate() {
-            let mut pieces = bb;
-            while pieces.0 != 0 {
-                let sq = pieces.pop_lsb();
-                hash ^= z.piece_square[i][sq as usize];
-            }
-        }
-
-        // Side to move
-        if self.side_to_move == Color::Black {
-            hash ^= z.side;
-        }
-
-        // Castling rights
-        hash ^= z.castling[self.castling() as usize];
-
-        // En passant
-        if self.en_passant().as_u8() < 64 {
-            let file = self.en_passant().as_u8() % 8;
-            hash ^= z.en_passant[file as usize];
-        }
-
-        hash
-    }
+impl Board<FullHistory> {
     // Function to create a board at the default position
     pub fn new() -> Self {
         let mut pieces = [Bitboard(0); 12];
@@ -277,16 +364,7 @@ impl Board {
 
         let side_to_move = Color::White;
 
-        let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
-        let en_passant = Square(64);
-        let halfmove_clock = 0;
-        let zobrist = 0;
-
-        let history = [zobrist; MAX_GAME_LENGTH];
-        let state = State::new(Piece::None, castling, en_passant, halfmove_clock);
-        let state_stack = [state; MAX_GAME_LENGTH];
-
-        let ply = 0;
+        let history = FullHistory::new();
 
         let mut board = Board {
             pieces,
@@ -295,14 +373,159 @@ impl Board {
             occ,
             side_to_move,
             history,
-            state_stack,
-            ply,
         };
 
         let zobrist = board.compute_zobrist();
-        board.history[ply] = zobrist;
+        board.history.hash_history[board.history.ply] = zobrist;
         board
     }
+    pub fn unmake_move(&mut self, mv: Move) {
+        // Pop undo stack and restore previous state
+        let captured_piece = self.history.pop();
+        self.side_to_move = self.side_to_move.flip();
+
+        let flags = mv.flags();
+        let is_capture = flags & CAPTURE_FLAG != 0;
+        let is_promotion = flags & PROMOTION_FLAG != 0;
+        let is_en_passant = flags & EN_PASSANT_FLAG != 0;
+        let is_castling = flags & CASTLING_FLAG != 0;
+        let mut moving_side_mask = Bitboard(0);
+        let mut opponent_side_mask = Bitboard(0);
+
+        // Move back the piece (checking for promotion and castling)
+        moving_side_mask |= Bitboard::from(mv.to()) | Bitboard::from(mv.from());
+        if is_promotion {
+            let promotion_piece = mv.promotion();
+            self.remove_piece(promotion_piece, mv.to());
+            self.mailbox[mv.to().as_usize()] = Piece::None;
+
+            match self.side_to_move {
+                Color::White => {
+                    self.add_piece(Piece::WP, mv.from());
+                    self.mailbox[mv.from().as_usize()] = Piece::WP;
+                }
+                Color::Black => {
+                    self.add_piece(Piece::BP, mv.from());
+                    self.mailbox[mv.from().as_usize()] = Piece::BP;
+                }
+            }
+        } else {
+            let moved_piece = self.piece_at(mv.to());
+            self.move_piece(moved_piece, mv.to(), mv.from());
+            self.mailbox[mv.to().as_usize()] = Piece::None;
+            self.mailbox[mv.from().as_usize()] = moved_piece;
+
+            if is_castling {
+                let (rook, rook_from, rook_to) = match mv.to().as_u8() {
+                    62 => (Piece::BR, Square(61), Square(63)), // black king side
+                    58 => (Piece::BR, Square(59), Square(56)), // black queen side
+                    6 => (Piece::WR, Square(5), Square(7)),    // white king side
+                    2 => (Piece::WR, Square(3), Square(0)),    // white queen side
+                    _ => unreachable!(),
+                };
+
+                self.move_piece(rook, rook_from, rook_to);
+                self.mailbox[rook_from.as_usize()] = Piece::None;
+                self.mailbox[rook_to.as_usize()] = rook;
+
+                let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
+                moving_side_mask |= rook_mask;
+            }
+        }
+
+        // In case of capture (and maybe en passant), restore the taken piece
+        if is_capture {
+            let c_p = captured_piece;
+            let c_sq = if is_en_passant {
+                match self.side_to_move {
+                    Color::White => Square(mv.to().as_u8() - 8),
+                    Color::Black => Square(mv.to().as_u8() + 8),
+                }
+            } else {
+                mv.to()
+            };
+            let sq_mask = Bitboard::from(c_sq);
+            opponent_side_mask |= sq_mask;
+            self.add_piece(c_p, c_sq);
+            self.mailbox[c_sq.as_usize()] = c_p;
+        }
+
+        // Recompute occupancy
+        self.occ ^= moving_side_mask ^ opponent_side_mask;
+        self.color_occ[self.side_to_move as usize] ^= moving_side_mask;
+        self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
+    }
+
+    pub fn perft(&mut self, depth: u8, move_lists: &mut [MoveList]) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        if depth == 1 {
+            let mut count = 0;
+            self.feed_legal_moves(|_| {
+                count += 1;
+                ControlFlow::Continue(())
+            });
+            return count;
+        }
+
+        let moves = &mut move_lists[depth as usize];
+        self.get_legal_moves_list(moves);
+        let count = moves.count;
+        let mut nodes = 0;
+        for i in 0..count {
+            let mv = move_lists[depth as usize].get(i).unwrap();
+            self.make_move(mv);
+            nodes += self.perft(depth - 1, move_lists);
+            self.unmake_move(mv);
+        }
+        nodes
+    }
+}
+impl<H: BoardHistory> Board<H> {
+    pub fn castling(&self) -> u8 {
+        self.history.castling()
+    }
+    pub fn en_passant(&self) -> Square {
+        self.history.en_passant()
+    }
+    pub fn zobrist(&self) -> u64 {
+        self.history.zobrist()
+    }
+    fn halfmove_clock(&self) -> u8 {
+        self.history.halfmove_clock()
+    }
+    fn compute_zobrist(&self) -> u64 {
+        let z = zobrist::zobrist();
+        let mut hash = 0;
+
+        // Pieces
+        for (i, &bb) in self.pieces.iter().enumerate() {
+            let mut pieces = bb;
+            while pieces.0 != 0 {
+                let sq = pieces.pop_lsb();
+                hash ^= z.piece_square[i][sq as usize];
+            }
+        }
+
+        // Side to move
+        if self.side_to_move == Color::Black {
+            hash ^= z.side;
+        }
+
+        // Castling rights
+        hash ^= z.castling[self.castling() as usize];
+
+        // En passant
+        if self.en_passant().as_u8() < 64 {
+            let file = self.en_passant().as_u8() % 8;
+            hash ^= z.en_passant[file as usize];
+        }
+
+        hash
+    }
+
     pub fn piece_at(&self, sq: Square) -> Piece {
         self.mailbox[sq.as_usize()]
     }
@@ -443,93 +666,13 @@ impl Board {
         self.side_to_move = opponent;
         new_hash ^= z.side;
 
-        self.ply += 1;
-        self.history[self.ply] = new_hash;
-        let new_state = State::new(
-            captured_piece,
+        self.history.push(
+            new_hash,
             new_castling,
             new_en_passant,
             new_halfmove_clock,
+            captured_piece,
         );
-        self.state_stack[self.ply] = new_state;
-    }
-
-    pub fn unmake_move(&mut self, mv: Move) {
-        // Pop undo stack and restore previous state
-        let captured_piece = self.state_stack[self.ply].captured_piece;
-        self.ply -= 1;
-        self.side_to_move = self.side_to_move.flip();
-
-        let flags = mv.flags();
-        let is_capture = flags & CAPTURE_FLAG != 0;
-        let is_promotion = flags & PROMOTION_FLAG != 0;
-        let is_en_passant = flags & EN_PASSANT_FLAG != 0;
-        let is_castling = flags & CASTLING_FLAG != 0;
-        let mut moving_side_mask = Bitboard(0);
-        let mut opponent_side_mask = Bitboard(0);
-
-        // Move back the piece (checking for promotion and castling)
-        moving_side_mask |= Bitboard::from(mv.to()) | Bitboard::from(mv.from());
-        if is_promotion {
-            let promotion_piece = mv.promotion();
-            self.remove_piece(promotion_piece, mv.to());
-            self.mailbox[mv.to().as_usize()] = Piece::None;
-
-            match self.side_to_move {
-                Color::White => {
-                    self.add_piece(Piece::WP, mv.from());
-                    self.mailbox[mv.from().as_usize()] = Piece::WP;
-                }
-                Color::Black => {
-                    self.add_piece(Piece::BP, mv.from());
-                    self.mailbox[mv.from().as_usize()] = Piece::BP;
-                }
-            }
-        } else {
-            let moved_piece = self.piece_at(mv.to());
-            self.move_piece(moved_piece, mv.to(), mv.from());
-            self.mailbox[mv.to().as_usize()] = Piece::None;
-            self.mailbox[mv.from().as_usize()] = moved_piece;
-
-            if is_castling {
-                let (rook, rook_from, rook_to) = match mv.to().as_u8() {
-                    62 => (Piece::BR, Square(61), Square(63)), // black king side
-                    58 => (Piece::BR, Square(59), Square(56)), // black queen side
-                    6 => (Piece::WR, Square(5), Square(7)),    // white king side
-                    2 => (Piece::WR, Square(3), Square(0)),    // white queen side
-                    _ => unreachable!(),
-                };
-
-                self.move_piece(rook, rook_from, rook_to);
-                self.mailbox[rook_from.as_usize()] = Piece::None;
-                self.mailbox[rook_to.as_usize()] = rook;
-
-                let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
-                moving_side_mask |= rook_mask;
-            }
-        }
-
-        // In case of capture (and maybe en passant), restore the taken piece
-        if is_capture {
-            let c_p = captured_piece;
-            let c_sq = if is_en_passant {
-                match self.side_to_move {
-                    Color::White => Square(mv.to().as_u8() - 8),
-                    Color::Black => Square(mv.to().as_u8() + 8),
-                }
-            } else {
-                mv.to()
-            };
-            let sq_mask = Bitboard::from(c_sq);
-            opponent_side_mask |= sq_mask;
-            self.add_piece(c_p, c_sq);
-            self.mailbox[c_sq.as_usize()] = c_p;
-        }
-
-        // Recompute occupancy
-        self.occ ^= moving_side_mask ^ opponent_side_mask;
-        self.color_occ[self.side_to_move as usize] ^= moving_side_mask;
-        self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
     }
 
     fn is_50_move_draw(&self) -> bool {
@@ -537,15 +680,7 @@ impl Board {
     }
 
     fn is_threefold_repetition(&self) -> bool {
-        let current = self.zobrist();
-        let start = self.ply.saturating_sub(self.halfmove_clock() as usize);
-        self.history[start..self.ply]
-            .iter()
-            .rev()
-            .step_by(2)
-            .filter(|&&h| h == current)
-            .count()
-            >= 2
+        self.history.is_repetition()
     }
 
     fn bishops_same_color(&self, bishops: Bitboard) -> bool {
@@ -599,35 +734,6 @@ impl Board {
 
     pub fn is_draw(&self) -> bool {
         self.is_50_move_draw() || self.is_threefold_repetition() || self.is_insufficient_material()
-    }
-
-    pub fn perft(&mut self, depth: u8, move_lists: &mut [MoveList]) -> u64 {
-        if depth == 0 {
-            return 1;
-        }
-
-        if depth == 1 {
-            let mut count = 0;
-            self.feed_legal_moves(|_| {
-                count += 1;
-                ControlFlow::Continue(())
-            });
-            return count;
-        }
-
-        let moves = &mut move_lists[depth as usize];
-        self.get_legal_moves_list(moves);
-        let count = moves.count;
-        let mut nodes = 0;
-        for i in 0..count {
-            let mv = move_lists[depth as usize].get(i).unwrap();
-            // println!("Making move at depth {}: {:?}", depth, m);
-            self.make_move(mv);
-            nodes += self.perft(depth - 1, move_lists);
-            self.unmake_move(mv);
-            // println!("Unmaking move at depth {}: {:?}", depth, m);
-        }
-        nodes
     }
 
     pub fn is_king_checked(&self) -> bool {

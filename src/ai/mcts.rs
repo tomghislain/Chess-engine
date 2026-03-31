@@ -1,8 +1,9 @@
+use crate::engine::board::BoardHistory;
 use crate::engine::{Board, Move, MoveList};
 use rand::RngExt;
 use rand::rngs::SmallRng;
 
-pub fn get_random_move(board: &Board, rng: &mut SmallRng) -> Option<Move> {
+pub fn get_random_move<H: BoardHistory>(board: &Board<H>, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
     board.get_legal_moves_list(&mut moves);
     if moves.count == 0 || board.is_draw() {
@@ -24,7 +25,7 @@ struct Node {
 }
 
 impl Node {
-    fn new(board: &Board, parent: NodeIndex, parent_move: Move) -> Self {
+    fn new<H: BoardHistory>(board: &Board<H>, parent: NodeIndex, parent_move: Move) -> Self {
         let mut moves = MoveList::new();
         if !board.is_draw() {
             board.get_legal_moves_list(&mut moves);
@@ -45,7 +46,7 @@ struct Tree {
 }
 
 impl Tree {
-    fn new(board: &mut Board) -> Self {
+    fn new<H: BoardHistory>(board: &mut Board<H>) -> Self {
         let mut moves = MoveList::new();
         board.get_legal_moves_list(&mut moves);
         Tree {
@@ -86,7 +87,7 @@ impl Tree {
         best_child
     }
 
-    fn select(&self, board: &mut Board) -> NodeIndex {
+    fn select<H: BoardHistory>(&self, board: &mut Board<H>) -> NodeIndex {
         let mut current: NodeIndex = 0; // Start at root
         while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
@@ -101,7 +102,12 @@ impl Tree {
         current
     }
 
-    fn expand(&mut self, board: &mut Board, node: NodeIndex, rng: &mut SmallRng) -> NodeIndex {
+    fn expand<H: BoardHistory>(
+        &mut self,
+        board: &mut Board<H>,
+        node: NodeIndex,
+        rng: &mut SmallRng,
+    ) -> NodeIndex {
         if self.nodes[node].untried_moves.count == 0 {
             return node;
         }
@@ -117,7 +123,12 @@ impl Tree {
         }
     }
 
-    fn rollout(&self, board: &mut Board, move_buffer: &mut MoveList, rng: &mut SmallRng) -> f32 {
+    fn rollout<H: BoardHistory>(
+        &self,
+        board: &mut Board<H>,
+        move_buffer: &mut MoveList,
+        rng: &mut SmallRng,
+    ) -> f32 {
         let starting_player = board.side_to_move;
         while !board.is_draw() {
             board.get_legal_moves_list(move_buffer);
@@ -151,7 +162,11 @@ impl Tree {
     }
 }
 
-pub fn mcts_search(board: &mut Board, iteration_number: usize, rng: &mut SmallRng) -> Option<Move> {
+pub fn mcts_search<H: BoardHistory>(
+    board: &mut Board<H>,
+    iteration_number: usize,
+    rng: &mut SmallRng,
+) -> Option<Move> {
     let mut moves = MoveList::new();
     board.get_legal_moves_list(&mut moves);
     if board.is_draw() || moves.count == 0 {

@@ -4,7 +4,7 @@ use crate::engine::types::*;
 
 use std::ops::ControlFlow;
 
-impl Board {
+impl<H: BoardHistory> Board<H> {
     fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
         f: &mut impl FnMut(Move) -> ControlFlow<()>,
