@@ -36,7 +36,6 @@ impl Node {
 }
 
 pub struct Tree {
-    root: usize,
     nodes: Vec<Node>,
 }
 
@@ -44,7 +43,6 @@ impl Tree {
     pub fn new(board: &Board<FullHistory>) -> Self {
         let mcts_board = board.to_mcts_board();
         Tree {
-            root: 0,
             nodes: vec![Node::new(&mcts_board, None, None)],
         }
     }
@@ -76,7 +74,7 @@ impl Tree {
     }
 
     fn select(&self, board: &mut Board<MctsHistory>) -> NodeIndex {
-        let mut current: NodeIndex = self.root; // Start at root
+        let mut current: NodeIndex = 0; // Start at root
         while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
         {
@@ -147,9 +145,6 @@ impl Tree {
             node.wins += value;
             value = 1.0 - value;
             current = node.parent;
-            if index == self.root {
-                break;
-            }
         }
     }
 
@@ -179,7 +174,7 @@ impl Tree {
     }
 
     pub fn advance_root(&mut self, board: &Board<FullHistory>, move_made: Move) {
-        let new_root_old_index = self.nodes[self.root]
+        let new_root_old_index = self.nodes[0]
             .children
             .iter()
             .copied()
@@ -215,7 +210,7 @@ impl Tree {
             self.backpropagate(new_node, score);
         }
 
-        self.nodes[self.root]
+        self.nodes[0]
             .children
             .iter()
             .max_by_key(|&&c| self.nodes[c].visits)
