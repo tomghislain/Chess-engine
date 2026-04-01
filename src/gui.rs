@@ -133,8 +133,9 @@ pub fn get_player_move<H: BoardHistory>(
     let _ = execute!(stdout, event::EnableMouseCapture);
     let _ = execute!(stdout, cursor::Hide);
     let mut from: Option<u8> = None;
-    let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
+    let mut legal_moves = MoveList::new();
+    board.get_legal_moves_list(&mut legal_moves);
+    let mut possible_moves = MoveList::new();
     loop {
         let read_event = event::read();
         if let Ok(event::Event::Mouse(event::MouseEvent {
@@ -145,7 +146,7 @@ pub fn get_player_move<H: BoardHistory>(
             let clicked = coords_to_sq(column, row);
             if let Some(clicked_sq) = clicked {
                 if from.is_some() {
-                    let valid_moves: Vec<&Move> = moves
+                    let valid_moves: Vec<&Move> = possible_moves
                         .iter()
                         .filter(|m| m.to() == Square(clicked_sq))
                         .collect();
@@ -162,7 +163,7 @@ pub fn get_player_move<H: BoardHistory>(
                         );
                     } else {
                         from = Some(clicked_sq);
-                        moves = moves
+                        possible_moves = legal_moves
                             .iter()
                             .filter_map(|&m| {
                                 if m.from() == Square(clicked_sq) {
@@ -175,7 +176,7 @@ pub fn get_player_move<H: BoardHistory>(
                     }
                 } else {
                     from = Some(clicked_sq);
-                    moves = moves
+                    possible_moves = legal_moves
                         .iter()
                         .filter_map(|&m| {
                             if m.from() == Square(clicked_sq) {
@@ -188,7 +189,7 @@ pub fn get_player_move<H: BoardHistory>(
                 }
             }
             let possible_to_squares = if from.is_some() {
-                moves.iter().map(|m| m.to()).collect()
+                possible_moves.iter().map(|m| m.to()).collect()
             } else {
                 Vec::new()
             };
