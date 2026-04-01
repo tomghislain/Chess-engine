@@ -51,8 +51,6 @@ struct Tree {
 
 impl Tree {
     fn new(board: &Board<MctsHistory>) -> Self {
-        let mut moves = MoveList::new();
-        board.get_legal_moves_list(&mut moves);
         Tree {
             nodes: vec![Node::new(board, None, None)],
         }

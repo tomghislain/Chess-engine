@@ -2,7 +2,7 @@ mod ai;
 mod engine;
 mod gui;
 
-use crate::ai::{mcts, negamax};
+use crate::ai::{mcts, mcts2, negamax};
 use crate::engine::{Board, Color, MoveList, Square};
 use rand::rngs::SmallRng;
 use std::env;
@@ -13,6 +13,7 @@ enum PlayerType {
     RandomMove,
     Negamax { depth: u8 },
     Mcts { iterations: usize },
+    Mcts2 { iterations: usize },
 }
 
 impl std::fmt::Display for PlayerType {
@@ -23,6 +24,9 @@ impl std::fmt::Display for PlayerType {
             PlayerType::Negamax { depth } => write!(f, "Negamax (depth {})", depth),
             PlayerType::Mcts { iterations } => {
                 write!(f, "Monte Carlo Tree Search ({} iterations)", iterations)
+            }
+            PlayerType::Mcts2 { iterations } => {
+                write!(f, "Monte Carlo Tree Search 2 ({} iterations)", iterations)
             }
         }
     }
@@ -83,6 +87,7 @@ fn run_game(
     let mut board = Board::new();
     let mut last_move_squares: Option<(Square, Square)> = None;
     let mut rng: SmallRng = rand::make_rng();
+    let mut tree = mcts2::Tree::new(&board);
 
     loop {
         if show_gui {
@@ -105,14 +110,18 @@ fn run_game(
             PlayerType::RandomMove => mcts::get_random_move(&board, &mut rng),
             PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
             PlayerType::Mcts { iterations } => mcts::mcts_search(&mut board, iterations, &mut rng),
+            PlayerType::Mcts2 { iterations } => tree.search(&mut board, iterations, &mut rng),
         };
 
-        if let Some(mv) = mv_result {
+        if let Some(mv) = mv_result
+            && !board.is_draw()
+        {
             if show_gui {
                 crossterm::terminal::disable_raw_mode()?;
             }
 
             board.make_move(mv);
+            tree.advance_root(&board, mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
             let result = if !board.has_legal_moves() {
@@ -223,6 +232,7 @@ fn ask_player_type(color: &str) -> Result<PlayerType, Box<dyn std::error::Error>
         P::RandomMove,
         P::Negamax { depth: 0 },
         P::Mcts { iterations: 0 },
+        P::Mcts2 { iterations: 0 },
     ];
     println!("Choose {color} player type");
     for (i, t) in player_types.iter().enumerate() {
@@ -241,6 +251,11 @@ fn ask_player_type(color: &str) -> Result<PlayerType, Box<dyn std::error::Error>
             println!("Number of iterations :");
             let iterations = read_usize_input()?;
             P::Mcts { iterations }
+        }
+        4 => {
+            println!("Number of iterations :");
+            let iterations = read_usize_input()?;
+            P::Mcts2 { iterations }
         }
         _ => return Err("Choice out of range".into()),
     };
