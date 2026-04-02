@@ -33,9 +33,8 @@ impl std::fmt::Display for PlayerType {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if env::args().any(|arg| arg == "--bench") {
-        play_batch_game(true)
-    } else if env::args().any(|arg| arg == "--perft") {
+    use env::*;
+    if args().any(|arg| arg == "--perft") {
         let mut board = Board::new();
         let depth = 7;
         let mut move_lists = vec![MoveList::new(); depth as usize + 1];
@@ -46,15 +45,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             board.perft(depth, &mut move_lists)
         );
         println!("Time taken: {:?}", start.elapsed());
-        Ok(())
-    } else if env::args().any(|arg| arg == "--mcts") {
+    }
+    if args().any(|arg| arg == "--mcts") {
         let mut board = Board::new();
         let mut rng: SmallRng = rand::make_rng();
         let iterations = 100_000;
-        mcts::mcts_search(&mut board, iterations, &mut rng);
-        Ok(())
+        let mut tree = mcts::Tree::new(&board);
+        tree.search(&mut board, iterations, &mut rng);
+    }
+    if args().any(|arg| arg == "--batch") {
+        play_batch_game(
+            args().any(|arg| arg == "--show-board"),
+            !args().any(|arg| arg == "--no-print"),
+        )
     } else {
-        ask_action()
+        play_single_game()
     }
 }
 
@@ -62,21 +67,6 @@ fn read_usize_input() -> Result<usize, Box<dyn std::error::Error>> {
     let mut buffer = String::new();
     std::io::stdin().read_line(&mut buffer)?;
     Ok(buffer.trim().parse()?)
-}
-
-fn ask_action() -> Result<(), Box<dyn std::error::Error>> {
-    let player_types = ["Single game", "Batch game"];
-    for (index, r#type) in player_types.iter().enumerate() {
-        println!("{index}. {type}");
-    }
-
-    match read_usize_input()? {
-        0 => play_single_game()?,
-        1 => play_batch_game(false)?,
-        _ => println!("Invalid input."),
-    };
-
-    Ok(())
 }
 
 fn run_game(
@@ -87,7 +77,8 @@ fn run_game(
     let mut board = Board::new();
     let mut last_move_squares: Option<(Square, Square)> = None;
     let mut rng: SmallRng = rand::make_rng();
-    let mut tree = mcts2::Tree::new(&board);
+    let mut tree = mcts::Tree::new(&board);
+    let mut tree2 = mcts2::Tree::new(&board);
 
     loop {
         if show_gui {
@@ -109,8 +100,8 @@ fn run_game(
             }
             PlayerType::RandomMove => mcts::get_random_move(&board, &mut rng),
             PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
-            PlayerType::Mcts { iterations } => mcts::mcts_search(&mut board, iterations, &mut rng),
-            PlayerType::Mcts2 { iterations } => tree.search(&mut board, iterations, &mut rng),
+            PlayerType::Mcts { iterations } => tree.search(&mut board, iterations, &mut rng),
+            PlayerType::Mcts2 { iterations } => tree2.search(&mut board, iterations, &mut rng),
         };
 
         if let Some(mv) = mv_result
@@ -122,6 +113,7 @@ fn run_game(
 
             board.make_move(mv);
             tree.advance_root(&board, mv);
+            tree2.advance_root(&board, mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
             let result = if !board.has_legal_moves() {
@@ -132,6 +124,7 @@ fn run_game(
 
             if show_gui {
                 gui::print_game_result(&board, result);
+                crossterm::terminal::disable_raw_mode()?;
             }
 
             if result {
@@ -143,31 +136,25 @@ fn run_game(
     }
 }
 
-fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let num_games;
-    let player_a;
-    let player_b;
-    if is_bench {
-        num_games = 10_000;
-        player_a = PlayerType::RandomMove;
-        player_b = PlayerType::RandomMove;
-    } else {
-        println!("Number of games:");
-        num_games = read_usize_input()?;
+fn play_batch_game(
+    show_board: bool,
+    print_progress: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Number of games:");
+    let num_games = read_usize_input()?;
 
-        player_a = loop {
-            match ask_player_type("A") {
-                Ok(t) => break t,
-                Err(e) => println!("Error: {e:?}, Try again."),
-            }
-        };
+    let player_a = loop {
+        match ask_player_type("A") {
+            Ok(t) => break t,
+            Err(e) => println!("Error: {e:?}, Try again."),
+        }
+    };
 
-        player_b = loop {
-            match ask_player_type("B") {
-                Ok(t) => break t,
-                Err(e) => println!("Error: {e:?}, Try again."),
-            }
-        };
+    let player_b = loop {
+        match ask_player_type("B") {
+            Ok(t) => break t,
+            Err(e) => println!("Error: {e:?}, Try again."),
+        }
     };
 
     let mut a_wins = 0;
@@ -182,7 +169,7 @@ fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
             (player_b, player_a, false)
         };
 
-        let result = run_game(white_player, black_player, false)?;
+        let result = run_game(white_player, black_player, show_board)?;
 
         match result {
             Some(winner) => {
@@ -200,9 +187,9 @@ fn play_batch_game(is_bench: bool) -> Result<(), Box<dyn std::error::Error>> {
             }
             None => draws += 1,
         }
-        if !is_bench {
+        if print_progress && !show_board {
             println!("Finished game {game_index}");
-        };
+        }
     }
     println!("\nBatch finished!");
     println!("Player A ({player_a}) wins: {a_wins}");

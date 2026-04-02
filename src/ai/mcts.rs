@@ -1,8 +1,3 @@
-use crate::engine::board::{BoardHistory, FullHistory, MctsHistory};
-use crate::engine::{Board, Move, MoveList};
-use rand::RngExt;
-use rand::rngs::SmallRng;
-
 pub fn get_random_move<H: BoardHistory>(board: &Board<H>, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
     board.get_legal_moves_list(&mut moves);
@@ -12,6 +7,11 @@ pub fn get_random_move<H: BoardHistory>(board: &Board<H>, rng: &mut SmallRng) ->
     let index = rng.random_range(0..moves.count);
     moves.get(index)
 }
+
+use crate::engine::board::{BoardHistory, FullHistory, MctsHistory};
+use crate::engine::{Board, Move, MoveList};
+use rand::RngExt;
+use rand::rngs::SmallRng;
 
 type NodeIndex = usize;
 
@@ -45,14 +45,15 @@ impl Node {
     }
 }
 
-struct Tree {
+pub struct Tree {
     nodes: Vec<Node>,
 }
 
 impl Tree {
-    fn new(board: &Board<MctsHistory>) -> Self {
+    pub fn new(board: &Board<FullHistory>) -> Self {
+        let mcts_board = board.to_mcts_board();
         Tree {
-            nodes: vec![Node::new(board, None, None)],
+            nodes: vec![Node::new(&mcts_board, None, None)],
         }
     }
 
@@ -156,34 +157,73 @@ impl Tree {
             current = node.parent;
         }
     }
-}
 
-pub fn mcts_search(
-    board: &mut Board<FullHistory>,
-    iteration_number: usize,
-    rng: &mut SmallRng,
-) -> Option<Move> {
-    let mcts_board = board.to_mcts_board();
-    let mut moves = MoveList::new();
-    mcts_board.get_legal_moves_list(&mut moves);
-    if board.is_draw() || moves.count == 0 {
-        return None;
+    fn collect_subtree(
+        old_nodes: &[Node],
+        old_index: NodeIndex,
+        new_nodes: &mut Vec<Node>,
+        parent: Option<NodeIndex>,
+    ) -> NodeIndex {
+        let new_index = new_nodes.len();
+        let old_node = &old_nodes[old_index];
+        let new_node = Node {
+            parent,
+            children: Vec::new(),
+            untried_moves: old_node.untried_moves.clone(),
+            visits: old_node.visits,
+            wins: old_node.wins,
+            parent_move: old_node.parent_move,
+        };
+        new_nodes.push(new_node);
+        for &old_child_index in &old_node.children {
+            let new_child_index =
+                Self::collect_subtree(old_nodes, old_child_index, new_nodes, Some(new_index));
+            new_nodes[new_index].children.push(new_child_index);
+        }
+        new_index
     }
 
-    // Create tree
-    let mut tree = Tree::new(&mcts_board);
-    // Iterate over the tree
-    for _ in 0..iteration_number {
-        let mut iteration_board = mcts_board.clone();
-        let selected_node = tree.select(&mut iteration_board);
-        let new_node = tree.expand(&mut iteration_board, selected_node, rng);
-        let score = tree.rollout(&mut iteration_board, &mut moves, rng);
-        tree.backpropagate(new_node, score);
+    pub fn advance_root(&mut self, board: &Board<FullHistory>, move_made: Move) {
+        let new_root_old_index = self.nodes[0]
+            .children
+            .iter()
+            .copied()
+            .find(|&c| self.nodes[c].parent_move == Some(move_made));
+        if let Some(old_index) = new_root_old_index {
+            let mut new_nodes = Vec::new();
+            Self::collect_subtree(&self.nodes, old_index, &mut new_nodes, None);
+            self.nodes = new_nodes;
+        } else {
+            self.nodes = vec![Node::new(&board.to_mcts_board(), None, None)];
+        }
     }
 
-    tree.nodes[0]
-        .children
-        .iter()
-        .max_by_key(|&&c| tree.nodes[c].visits)
-        .and_then(|&c| tree.nodes[c].parent_move)
+    pub fn search(
+        &mut self,
+        board: &mut Board<FullHistory>,
+        iteration_count: usize,
+        rng: &mut SmallRng,
+    ) -> Option<Move> {
+        let mcts_board = board.to_mcts_board();
+        let mut moves = MoveList::new();
+        mcts_board.get_legal_moves_list(&mut moves);
+        if board.is_draw() || moves.count == 0 {
+            return None;
+        }
+
+        // Iterate over the tree
+        for _ in 0..iteration_count {
+            let mut iteration_board = mcts_board.clone();
+            let selected_node = self.select(&mut iteration_board);
+            let new_node = self.expand(&mut iteration_board, selected_node, rng);
+            let score = self.rollout(&mut iteration_board, &mut moves, rng);
+            self.backpropagate(new_node, score);
+        }
+
+        self.nodes[0]
+            .children
+            .iter()
+            .max_by_key(|&&c| self.nodes[c].visits)
+            .and_then(|&c| self.nodes[c].parent_move)
+    }
 }
