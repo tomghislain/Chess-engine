@@ -15,6 +15,14 @@ use rand::rngs::SmallRng;
 
 type NodeIndex = usize;
 
+#[derive(PartialEq, Clone, Copy)]
+enum Solved {
+    None,
+    Win,
+    Loss,
+    Draw,
+}
+
 struct Node {
     parent: Option<NodeIndex>,
     children: Vec<NodeIndex>,
@@ -22,6 +30,7 @@ struct Node {
     visits: u32,
     wins: f32,
     parent_move: Option<Move>,
+    solved_value: Solved,
 }
 
 impl Node {
@@ -29,6 +38,7 @@ impl Node {
         board: &Board<MctsHistory>,
         parent: Option<NodeIndex>,
         parent_move: Option<Move>,
+        solved_value: Solved,
     ) -> Self {
         let mut moves = MoveList::new();
         if !board.is_draw() {
@@ -41,6 +51,7 @@ impl Node {
             visits: 0,
             wins: 0.0,
             parent_move,
+            solved_value,
         }
     }
 }
@@ -53,7 +64,16 @@ impl Tree {
     pub fn new(board: &Board<FullHistory>) -> Self {
         let mcts_board = board.to_mcts_board();
         Tree {
-            nodes: vec![Node::new(&mcts_board, None, None)],
+            nodes: vec![Node::new(&mcts_board, None, None, Solved::None)],
+        }
+    }
+
+    fn children_value_from_parent_perspective(&self, child: NodeIndex) -> f32 {
+        match self.nodes[child].solved_value {
+            Solved::Win => 0.0,
+            Solved::Loss => 1.0,
+            Solved::Draw => 0.5,
+            Solved::None => 1.0 - (self.nodes[child].wins / self.nodes[child].visits as f32),
         }
     }
 
@@ -70,7 +90,7 @@ impl Tree {
             let uct = if child.visits == 0 {
                 f32::INFINITY
             } else {
-                (child.wins / child.visits as f32)
+                self.children_value_from_parent_perspective(child_idx)
                     + c * (parent_visits.ln() / child.visits as f32).sqrt()
             };
 
@@ -88,6 +108,9 @@ impl Tree {
         while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
         {
+            if self.nodes[current].solved_value != Solved::None {
+                break;
+            }
             if let Some(best_child_index) = self.best_uct_child(current) {
                 board.make_move(self.nodes[best_child_index].parent_move.unwrap());
                 current = best_child_index;
@@ -104,15 +127,32 @@ impl Tree {
         node: NodeIndex,
         rng: &mut SmallRng,
     ) -> NodeIndex {
-        if self.nodes[node].untried_moves.count == 0 {
+        if self.nodes[node].untried_moves.count == 0
+            || self.nodes[node].solved_value != Solved::None
+        {
             return node;
         }
         let index = rng.random_range(0..self.nodes[node].untried_moves.count);
         if let Some(untried_move) = self.nodes[node].untried_moves.swap_pop(index) {
             board.make_move(untried_move);
             let child_idx = self.nodes.len();
-            self.nodes
-                .push(Node::new(board, Some(node), Some(untried_move)));
+            let solved_value = if board.is_draw() {
+                Solved::Draw
+            } else if !board.has_legal_moves() {
+                if board.is_king_checked() {
+                    Solved::Loss
+                } else {
+                    Solved::Draw
+                }
+            } else {
+                Solved::None
+            };
+            self.nodes.push(Node::new(
+                board,
+                Some(node),
+                Some(untried_move),
+                solved_value,
+            ));
             self.nodes[node].children.push(child_idx);
             child_idx
         } else {
@@ -123,9 +163,16 @@ impl Tree {
     fn rollout(
         &self,
         board: &mut Board<MctsHistory>,
+        node: NodeIndex,
         move_buffer: &mut MoveList,
         rng: &mut SmallRng,
     ) -> f32 {
+        match self.nodes[node].solved_value {
+            Solved::None => (),
+            Solved::Win => return 1.0,
+            Solved::Loss => return 0.0,
+            Solved::Draw => return 0.5,
+        }
         let starting_player = board.side_to_move;
         while !board.is_draw() {
             board.get_legal_moves_list(move_buffer);
@@ -133,9 +180,9 @@ impl Tree {
             if num_moves == 0 {
                 if board.is_king_checked() {
                     if board.side_to_move != starting_player {
-                        return 0.0; // Checkmate loss
+                        return 1.0; // Starting player won
                     } else {
-                        return 1.0; // Checkmate win
+                        return 0.0; // Starting player lost
                     }
                 } else {
                     break;
@@ -147,14 +194,55 @@ impl Tree {
         0.5 // Draw
     }
 
+    fn try_solve(&mut self, node: NodeIndex) {
+        if self.nodes[node].solved_value == Solved::None {
+            let mut new_solved_value = Solved::None;
+            let mut all_win = true;
+            let mut has_draw = false;
+            let mut is_expanded = self.nodes[node].untried_moves.count == 0;
+            for &child_index in &self.nodes[node].children {
+                match self.nodes[child_index].solved_value {
+                    Solved::Loss => {
+                        new_solved_value = Solved::Win;
+                        all_win = false;
+                        has_draw = false;
+                        break;
+                    }
+                    Solved::Draw => {
+                        all_win = false;
+                        has_draw = true;
+                    }
+                    Solved::None => {
+                        is_expanded = false;
+                    }
+                    Solved::Win => (),
+                }
+            }
+            if is_expanded {
+                if all_win {
+                    new_solved_value = Solved::Loss;
+                } else if has_draw {
+                    new_solved_value = Solved::Draw;
+                }
+            }
+            self.nodes[node].solved_value = new_solved_value;
+        }
+    }
+
     fn backpropagate(&mut self, leaf: NodeIndex, mut value: f32) {
         let mut current: Option<NodeIndex> = Some(leaf);
         while let Some(index) = current {
-            let node = &mut self.nodes[index];
-            node.visits += 1;
-            node.wins += value;
+            self.nodes[index].visits += 1;
+            self.nodes[index].wins += value;
+            self.try_solve(index);
+            match self.nodes[index].solved_value {
+                Solved::Win => value = 1.0,
+                Solved::Loss => value = 0.0,
+                Solved::Draw => value = 0.5,
+                Solved::None => (),
+            }
             value = 1.0 - value;
-            current = node.parent;
+            current = self.nodes[index].parent;
         }
     }
 
@@ -173,6 +261,7 @@ impl Tree {
             visits: old_node.visits,
             wins: old_node.wins,
             parent_move: old_node.parent_move,
+            solved_value: old_node.solved_value,
         };
         new_nodes.push(new_node);
         for &old_child_index in &old_node.children {
@@ -194,7 +283,7 @@ impl Tree {
             Self::collect_subtree(&self.nodes, old_index, &mut new_nodes, None);
             self.nodes = new_nodes;
         } else {
-            self.nodes = vec![Node::new(&board.to_mcts_board(), None, None)];
+            self.nodes = vec![Node::new(&board.to_mcts_board(), None, None, Solved::None)];
         }
     }
 
@@ -213,13 +302,33 @@ impl Tree {
 
         // Iterate over the tree
         for _ in 0..iteration_count {
+            if self.nodes[0].solved_value != Solved::None {
+                break;
+            }
             let mut iteration_board = mcts_board.clone();
             let selected_node = self.select(&mut iteration_board);
             let new_node = self.expand(&mut iteration_board, selected_node, rng);
-            let score = self.rollout(&mut iteration_board, &mut moves, rng);
+            let score = self.rollout(&mut iteration_board, new_node, &mut moves, rng);
             self.backpropagate(new_node, score);
         }
 
+        match self.nodes[0].solved_value {
+            Solved::Win => {
+                for &child_index in &self.nodes[0].children {
+                    if self.nodes[child_index].solved_value == Solved::Loss {
+                        return self.nodes[child_index].parent_move;
+                    }
+                }
+            }
+            Solved::Draw => {
+                for &child_index in &self.nodes[0].children {
+                    if self.nodes[child_index].solved_value == Solved::Draw {
+                        return self.nodes[child_index].parent_move;
+                    }
+                }
+            }
+            _ => (),
+        }
         self.nodes[0]
             .children
             .iter()

@@ -226,6 +226,12 @@ impl Tree {
         while let Some(index) = current {
             self.nodes[index].visits += 1;
             self.nodes[index].wins += value;
+            match self.nodes[index].solved_value {
+                Solved::Win => value = 1.0,
+                Solved::Loss => value = 0.0,
+                Solved::Draw => value = 0.5,
+                Solved::None => (),
+            }
             self.try_solve(index);
             value = 1.0 - value;
             current = self.nodes[index].parent;
