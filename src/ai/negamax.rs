@@ -53,7 +53,7 @@ fn negamax(
     board.get_legal_moves_list(&mut moves);
     if moves.count == 0 {
         if board.is_king_checked() {
-            return -10000 + depth as isize;
+            return -10000 - depth as isize;
         } else {
             return 0;
         }
@@ -100,22 +100,24 @@ pub fn search_root(board: &mut Board<FullHistory>, depth: u8) -> Option<Move> {
         return None;
     }
     let mut tt = TranspositionTable::new();
-    let alpha = isize::MIN;
-    let beta = isize::MAX;
-    let mut best_score = isize::MIN;
+    let big_number = 1_000_000_000;
+    let mut alpha = -big_number;
+    let beta = big_number;
+    let mut best_score = -big_number;
     let mut best_move = None;
 
     let mut moves = MoveList::new();
     board.get_legal_moves_list(&mut moves);
     for mv in moves.iter() {
         board.make_move(*mv);
-        let score = -negamax(board, depth, alpha, beta, &mut tt);
+        let score = -negamax(board, depth - 1, alpha, beta, &mut tt);
         board.unmake_move(*mv);
 
         if score > best_score {
             best_score = score;
             best_move = Some(mv);
         }
+        alpha = alpha.max(score);
     }
 
     best_move.copied()

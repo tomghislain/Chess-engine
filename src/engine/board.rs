@@ -72,8 +72,6 @@ const CASTLING_UPDATE: [u8; 64] = [
     !BK_CASTLE,
 ];
 
-const MAX_GAME_LENGTH: usize = 1024;
-
 #[derive(Clone, Copy)]
 pub struct State {
     pub captured_piece: Piece,
@@ -83,8 +81,8 @@ pub struct State {
 }
 
 pub struct FullHistory {
-    hash_history: [u64; MAX_GAME_LENGTH],
-    state_stack: [State; MAX_GAME_LENGTH],
+    hash_history: Vec<u64>,
+    state_stack: Vec<State>,
     ply: usize,
 }
 
@@ -134,9 +132,13 @@ impl BoardHistory for FullHistory {
         captured_piece: Piece,
     ) {
         self.ply += 1;
-        self.hash_history[self.ply] = hash;
-        self.state_stack[self.ply] =
-            State::new(captured_piece, castling, en_passant, halfmove_clock);
+        self.hash_history.push(hash);
+        self.state_stack.push(State::new(
+            captured_piece,
+            castling,
+            en_passant,
+            halfmove_clock,
+        ));
     }
     fn is_repetition(&self) -> bool {
         let current = self.zobrist();
@@ -144,6 +146,7 @@ impl BoardHistory for FullHistory {
         self.hash_history[start..self.ply]
             .iter()
             .rev()
+            .skip(1)
             .step_by(2)
             .filter(|&&h| h == current)
             .count()
@@ -153,12 +156,12 @@ impl BoardHistory for FullHistory {
 impl FullHistory {
     fn new() -> Self {
         let zobrist = 0;
-        let hash_history = [zobrist; MAX_GAME_LENGTH];
+        let hash_history = vec![zobrist];
         let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
         let en_passant = Square(64);
         let halfmove_clock = 0;
         let state = State::new(Piece::None, castling, en_passant, halfmove_clock);
-        let state_stack = [state; MAX_GAME_LENGTH];
+        let state_stack = vec![state];
 
         let ply = 0;
         FullHistory {
@@ -168,7 +171,8 @@ impl FullHistory {
         }
     }
     fn pop(&mut self) -> Piece {
-        let captured = self.state_stack[self.ply].captured_piece;
+        let captured = self.state_stack.pop().unwrap().captured_piece;
+        self.hash_history.pop();
         self.ply -= 1;
         captured
     }
@@ -205,6 +209,7 @@ impl BoardHistory for MctsHistory {
         self.hash_history[..self.halfmove_clock as usize]
             .iter()
             .rev()
+            .skip(1)
             .step_by(2)
             .filter(|&&h| h == current)
             .count()
@@ -483,7 +488,7 @@ impl Board<FullHistory> {
     pub fn to_mcts_board(&self) -> Board<MctsHistory> {
         let halfmove_clock = self.history.halfmove_clock() as usize;
         let mut hash_history = [0; 101];
-        for i in 0..halfmove_clock {
+        for i in 0..=halfmove_clock {
             hash_history[i] = self.history.hash_history[self.history.ply - halfmove_clock + i];
         }
         Board {
