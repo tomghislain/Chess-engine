@@ -1,4 +1,7 @@
-use crate::engine::types::*;
+use crate::engine::types::{
+    Bitboard, CAPTURE_FLAG, CASTLING_FLAG, Color, DOUBLE_PAWN_PUSH_FLAG, EN_PASSANT_FLAG, Move,
+    MoveList, PROMOTION_FLAG, Piece,
+};
 use crate::engine::{Square, zobrist};
 pub const WK_CASTLE: u8 = 1 << 0;
 pub const WQ_CASTLE: u8 = 1 << 1;
@@ -151,7 +154,7 @@ impl BoardHistory for FullHistory {
     }
 }
 impl FullHistory {
-    fn new() -> Self {
+    const fn new() -> Self {
         let zobrist = 0;
         let hash_history = [zobrist; MAX_GAME_LENGTH];
         let castling = WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE;
@@ -161,13 +164,13 @@ impl FullHistory {
         let state_stack = [state; MAX_GAME_LENGTH];
 
         let ply = 0;
-        FullHistory {
+        Self {
             hash_history,
             state_stack,
             ply,
         }
     }
-    fn pop(&mut self) -> Piece {
+    const fn pop(&mut self) -> Piece {
         let captured = self.state_stack[self.ply].captured_piece;
         self.ply -= 1;
         captured
@@ -224,13 +227,13 @@ pub struct Board<H: BoardHistory> {
 }
 
 impl State {
-    pub fn new(
+    pub const fn new(
         captured_piece: Piece,
         castling: u8,
         en_passant: Square,
         halfmove_clock: u8,
     ) -> Self {
-        State {
+        Self {
             captured_piece,
             castling,
             en_passant,
@@ -241,6 +244,7 @@ impl State {
 
 impl Board<FullHistory> {
     // Function to create a board at the default position
+    #[allow(clippy::too_many_lines)]
     pub fn new() -> Self {
         let mut pieces = [Bitboard(0); 12];
 
@@ -364,10 +368,10 @@ impl Board<FullHistory> {
 
         let history = FullHistory::new();
 
-        let mut board = Board {
+        let mut board = Self {
             pieces,
-            mailbox,
             color_occ,
+            mailbox,
             occ,
             side_to_move,
             history,
@@ -481,10 +485,11 @@ impl Board<FullHistory> {
     }
 
     pub fn to_mcts_board(&self) -> Board<MctsHistory> {
-        let halfmove_clock = self.history.halfmove_clock() as usize;
+        let halfmove_clock = self.history.halfmove_clock();
         let mut hash_history = [0; 101];
-        for i in 0..halfmove_clock {
-            hash_history[i] = self.history.hash_history[self.history.ply - halfmove_clock + i];
+        for i in 0..(halfmove_clock as usize) {
+            hash_history[i] =
+                self.history.hash_history[self.history.ply - halfmove_clock as usize + i];
         }
         Board {
             pieces: self.pieces,
@@ -494,7 +499,7 @@ impl Board<FullHistory> {
             side_to_move: self.side_to_move,
             history: MctsHistory {
                 hash_history,
-                halfmove_clock: halfmove_clock as u8,
+                halfmove_clock,
                 en_passant: self.history.en_passant(),
                 castling: self.history.castling(),
             },
@@ -504,7 +509,7 @@ impl Board<FullHistory> {
 
 impl Clone for Board<MctsHistory> {
     fn clone(&self) -> Self {
-        Board {
+        Self {
             pieces: self.pieces,
             color_occ: self.color_occ,
             mailbox: self.mailbox,
@@ -558,7 +563,7 @@ impl<H: BoardHistory> Board<H> {
         hash
     }
 
-    pub fn piece_at(&self, sq: Square) -> Piece {
+    pub const fn piece_at(&self, sq: Square) -> Piece {
         self.mailbox[sq.as_usize()]
     }
 
@@ -580,6 +585,7 @@ impl<H: BoardHistory> Board<H> {
         self.pieces[p as usize] ^= mask;
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn make_move(&mut self, mv: Move) {
         let z = zobrist::zobrist();
         let mut new_hash = self.zobrist();
@@ -669,7 +675,7 @@ impl<H: BoardHistory> Board<H> {
             new_hash ^= z.en_passant[file as usize];
         }
         let new_en_passant = Square(if is_double_pawn_push {
-            (mv.from().as_u8() + mv.to().as_u8()) / 2
+            u8::midpoint(mv.from().as_u8(), mv.to().as_u8())
         } else {
             64
         });
@@ -715,16 +721,16 @@ impl<H: BoardHistory> Board<H> {
         self.history.is_repetition()
     }
 
-    fn bishops_same_color(&self, bishops: Bitboard) -> bool {
-        const LIGHT_SQUARES: Bitboard = Bitboard(0x55AA55AA55AA55AA);
+    fn bishops_same_color(bishops: Bitboard) -> bool {
+        const LIGHT_SQUARES: Bitboard = Bitboard(0x55_AA_55_AA_55_AA_55_AA);
         (bishops & LIGHT_SQUARES) == bishops || (bishops & LIGHT_SQUARES).is_empty()
     }
 
-    fn insufficient_minors(&self, knights: Bitboard, bishops: Bitboard) -> bool {
+    fn insufficient_minors(knights: Bitboard, bishops: Bitboard) -> bool {
         if !knights.is_empty() && !bishops.is_empty() {
             false
         } else if !bishops.is_empty() && knights.is_empty() {
-            self.bishops_same_color(bishops)
+            Self::bishops_same_color(bishops)
         } else {
             knights.count_ones() == 1
         }
@@ -751,14 +757,14 @@ impl<H: BoardHistory> Board<H> {
 
         match (white_has_minors, black_has_minors) {
             (false, false) => true,
-            (false, true) => self.insufficient_minors(b_knights, b_bishops),
-            (true, false) => self.insufficient_minors(w_knights, w_bishops),
+            (false, true) => Self::insufficient_minors(b_knights, b_bishops),
+            (true, false) => Self::insufficient_minors(w_knights, w_bishops),
             (true, true) => {
-                if !(w_knights | b_knights).is_empty() {
-                    false
-                } else {
+                if (w_knights | b_knights).is_empty() {
                     let bishops = w_bishops | b_bishops;
-                    self.bishops_same_color(bishops)
+                    Self::bishops_same_color(bishops)
+                } else {
+                    false
                 }
             }
         }

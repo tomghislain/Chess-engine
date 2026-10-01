@@ -1,11 +1,11 @@
 use crate::engine::types::Bitboard;
 
-pub const FILE_A: Bitboard = Bitboard(0x0101010101010101);
-pub const FILE_B: Bitboard = Bitboard(0x0202020202020202);
-pub const FILE_G: Bitboard = Bitboard(0x4040404040404040);
-pub const FILE_H: Bitboard = Bitboard(0x8080808080808080);
-pub const RANK_2: Bitboard = Bitboard(0x000000000000FF00);
-pub const RANK_7: Bitboard = Bitboard(0x00FF000000000000);
+pub const FILE_A: Bitboard = Bitboard(0x01_01_01_01_01_01_01_01);
+pub const FILE_B: Bitboard = Bitboard(0x02_02_02_02_02_02_02_02);
+pub const FILE_G: Bitboard = Bitboard(0x40_40_40_40_40_40_40_40);
+pub const FILE_H: Bitboard = Bitboard(0x80_80_80_80_80_80_80_80);
+pub const RANK_2: Bitboard = Bitboard(0x00_00_00_00_00_00_FF_00);
+pub const RANK_7: Bitboard = Bitboard(0x00_FF_00_00_00_00_00_00);
 
 const fn gen_white_pawn_attacks() -> [Bitboard; 64] {
     let mut table = [Bitboard(0); 64];
@@ -45,7 +45,7 @@ pub const BLACK_PAWN_ATTACKS: [Bitboard; 64] = gen_black_pawn_attacks();
 
 const fn gen_knight_attacks() -> [Bitboard; 64] {
     let mut table = [Bitboard(0); 64];
-    let mut sq = 0;
+    let mut sq = 0_usize;
 
     while sq < 64 {
         let mask = 1u64 << sq;
@@ -59,7 +59,7 @@ const fn gen_knight_attacks() -> [Bitboard; 64] {
             | ((mask >> 10) & !FILE_H.0 & !FILE_G.0)
             | ((mask >> 6) & !FILE_A.0 & !FILE_B.0);
 
-        table[sq as usize] = Bitboard(attacks);
+        table[sq] = Bitboard(attacks);
         sq += 1;
     }
 
@@ -70,35 +70,40 @@ pub const KNIGHT_ATTACKS: [Bitboard; 64] = gen_knight_attacks();
 
 const fn gen_rook_masks() -> [Bitboard; 64] {
     let mut masks = [Bitboard(0); 64];
-    let mut sq: usize = 0;
+    let mut sq = 0;
     while sq < 64 {
         let rank = sq / 8;
         let file = sq % 8;
         let mut mask = 0;
+
         // North
         let mut r = rank + 1;
         while r < 7 {
             mask |= 1u64 << (r * 8 + file);
             r += 1;
         }
+
         // South
-        let mut r = rank as i32 - 1;
-        while r > 0 {
-            mask |= 1u64 << (r * 8 + file as i32);
+        let mut r = rank;
+        while r > 1 {
             r -= 1;
+            mask |= 1u64 << (r * 8 + file);
         }
+
         // East
         let mut f = file + 1;
         while f < 7 {
             mask |= 1u64 << (rank * 8 + f);
             f += 1;
         }
+
         // West
-        let mut f = file as i32 - 1;
-        while f > 0 {
-            mask |= 1u64 << (rank as i32 * 8 + f);
+        let mut f = file;
+        while f > 1 {
             f -= 1;
+            mask |= 1u64 << (rank * 8 + f);
         }
+
         masks[sq] = Bitboard(mask);
         sq += 1;
     }
@@ -112,6 +117,7 @@ const fn gen_bishop_masks() -> [Bitboard; 64] {
         let rank = sq / 8;
         let file = sq % 8;
         let mut mask = 0;
+
         // North-East
         let mut r = rank + 1;
         let mut f = file + 1;
@@ -120,30 +126,34 @@ const fn gen_bishop_masks() -> [Bitboard; 64] {
             r += 1;
             f += 1;
         }
+
         // North-West
         let mut r = rank + 1;
-        let mut f = file as i32 - 1;
-        while r < 7 && f > 0 {
-            mask |= 1u64 << (r as i32 * 8 + f);
-            r += 1;
+        let mut f = file;
+        while r < 7 && f > 1 {
             f -= 1;
+            mask |= 1u64 << (r * 8 + f);
+            r += 1;
         }
+
         // South-East
-        let mut r = rank as i32 - 1;
+        let mut r = rank;
         let mut f = file + 1;
-        while r > 0 && f < 7 {
-            mask |= 1u64 << (r * 8 + f as i32);
+        while r > 1 && f < 7 {
             r -= 1;
+            mask |= 1u64 << (r * 8 + f);
             f += 1;
         }
+
         // South-West
-        let mut r = rank as i32 - 1;
-        let mut f = file as i32 - 1;
-        while r > 0 && f > 0 {
-            mask |= 1u64 << (r as u32 * 8 + f as u32);
+        let mut r = rank;
+        let mut f = file;
+        while r > 1 && f > 1 {
             r -= 1;
             f -= 1;
+            mask |= 1u64 << (r * 8 + f);
         }
+
         masks[sq] = Bitboard(mask);
         sq += 1;
     }
@@ -156,136 +166,136 @@ pub const BISHOP_MASKS: [Bitboard; 64] = gen_bishop_masks();
 
 // Magics and shift from https://github.com/SebLague/Chess-Coding-Adventure/
 pub const ROOK_MAGIC_NUMBERS: [u64; 64] = [
-    468374916371625120,
-    18428729537625841661,
-    2531023729696186408,
-    6093370314119450896,
-    13830552789156493815,
-    16134110446239088507,
-    12677615322350354425,
-    5404321144167858432,
-    2111097758984580,
-    18428720740584907710,
-    17293734603602787839,
-    4938760079889530922,
-    7699325603589095390,
-    9078693890218258431,
-    578149610753690728,
-    9496543503900033792,
-    1155209038552629657,
-    9224076274589515780,
-    1835781998207181184,
-    509120063316431138,
-    16634043024132535807,
-    18446673631917146111,
-    9623686630121410312,
-    4648737361302392899,
-    738591182849868645,
-    1732936432546219272,
-    2400543327507449856,
-    5188164365601475096,
-    10414575345181196316,
-    1162492212166789136,
-    9396848738060210946,
-    622413200109881612,
-    7998357718131801918,
-    7719627227008073923,
-    16181433497662382080,
-    18441958655457754079,
-    1267153596645440,
-    18446726464209379263,
-    1214021438038606600,
-    4650128814733526084,
-    9656144899867951104,
-    18444421868610287615,
-    3695311799139303489,
-    10597006226145476632,
-    18436046904206950398,
-    18446726472933277663,
-    3458977943764860944,
-    39125045590687766,
-    9227453435446560384,
-    6476955465732358656,
-    1270314852531077632,
-    2882448553461416064,
-    11547238928203796481,
-    1856618300822323264,
-    2573991788166144,
-    4936544992551831040,
-    13690941749405253631,
-    15852669863439351807,
-    18302628748190527413,
-    12682135449552027479,
-    13830554446930287982,
-    18302628782487371519,
-    7924083509981736956,
-    4734295326018586370,
+    468_374_916_371_625_120,
+    18_428_729_537_625_841_661,
+    2_531_023_729_696_186_408,
+    6_093_370_314_119_450_896,
+    13_830_552_789_156_493_815,
+    16_134_110_446_239_088_507,
+    12_677_615_322_350_354_425,
+    5_404_321_144_167_858_432,
+    2_111_097_758_984_580,
+    18_428_720_740_584_907_710,
+    17_293_734_603_602_787_839,
+    4_938_760_079_889_530_922,
+    7_699_325_603_589_095_390,
+    9_078_693_890_218_258_431,
+    578_149_610_753_690_728,
+    9_496_543_503_900_033_792,
+    1_155_209_038_552_629_657,
+    9_224_076_274_589_515_780,
+    1_835_781_998_207_181_184,
+    509_120_063_316_431_138,
+    16_634_043_024_132_535_807,
+    18_446_673_631_917_146_111,
+    9_623_686_630_121_410_312,
+    4_648_737_361_302_392_899,
+    738_591_182_849_868_645,
+    1_732_936_432_546_219_272,
+    2_400_543_327_507_449_856,
+    5_188_164_365_601_475_096,
+    10_414_575_345_181_196_316,
+    1_162_492_212_166_789_136,
+    9_396_848_738_060_210_946,
+    622_413_200_109_881_612,
+    7_998_357_718_131_801_918,
+    7_719_627_227_008_073_923,
+    16_181_433_497_662_382_080,
+    18_441_958_655_457_754_079,
+    1_267_153_596_645_440,
+    18_446_726_464_209_379_263,
+    1_214_021_438_038_606_600,
+    4_650_128_814_733_526_084,
+    9_656_144_899_867_951_104,
+    18_444_421_868_610_287_615,
+    3_695_311_799_139_303_489,
+    10_597_006_226_145_476_632,
+    18_436_046_904_206_950_398,
+    18_446_726_472_933_277_663,
+    3_458_977_943_764_860_944,
+    39_125_045_590_687_766,
+    9_227_453_435_446_560_384,
+    6_476_955_465_732_358_656,
+    1_270_314_852_531_077_632,
+    2_882_448_553_461_416_064,
+    11_547_238_928_203_796_481,
+    1_856_618_300_822_323_264,
+    2_573_991_788_166_144,
+    4_936_544_992_551_831_040,
+    13_690_941_749_405_253_631,
+    15_852_669_863_439_351_807,
+    18_302_628_748_190_527_413,
+    12_682_135_449_552_027_479,
+    13_830_554_446_930_287_982,
+    18_302_628_782_487_371_519,
+    7_924_083_509_981_736_956,
+    4_734_295_326_018_586_370,
 ];
 pub const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
-    16509839532542417919,
-    14391803910955204223,
-    1848771770702627364,
-    347925068195328958,
-    5189277761285652493,
-    3750937732777063343,
-    18429848470517967340,
-    17870072066711748607,
-    16715520087474960373,
-    2459353627279607168,
-    7061705824611107232,
-    8089129053103260512,
-    7414579821471224013,
-    9520647030890121554,
-    17142940634164625405,
-    9187037984654475102,
-    4933695867036173873,
-    3035992416931960321,
-    15052160563071165696,
-    5876081268917084809,
-    1153484746652717320,
-    6365855841584713735,
-    2463646859659644933,
-    1453259901463176960,
-    9808859429721908488,
-    2829141021535244552,
-    576619101540319252,
-    5804014844877275314,
-    4774660099383771136,
-    328785038479458864,
-    2360590652863023124,
-    569550314443282,
-    17563974527758635567,
-    11698101887533589556,
-    5764964460729992192,
-    6953579832080335136,
-    1318441160687747328,
-    8090717009753444376,
-    16751172641200572929,
-    5558033503209157252,
-    17100156536247493656,
-    7899286223048400564,
-    4845135427956654145,
-    2368485888099072,
-    2399033289953272320,
-    6976678428284034058,
-    3134241565013966284,
-    8661609558376259840,
-    17275805361393991679,
-    15391050065516657151,
-    11529206229534274423,
-    9876416274250600448,
-    16432792402597134585,
-    11975705497012863580,
-    11457135419348969979,
-    9763749252098620046,
-    16960553411078512574,
-    15563877356819111679,
-    14994736884583272463,
-    9441297368950544394,
-    14537646123432199168,
-    9888547162215157388,
-    18140215579194907366,
-    18374682062228545019,
+    16_509_839_532_542_417_919,
+    14_391_803_910_955_204_223,
+    1_848_771_770_702_627_364,
+    347_925_068_195_328_958,
+    5_189_277_761_285_652_493,
+    3_750_937_732_777_063_343,
+    18_429_848_470_517_967_340,
+    17_870_072_066_711_748_607,
+    16_715_520_087_474_960_373,
+    2_459_353_627_279_607_168,
+    7_061_705_824_611_107_232,
+    8_089_129_053_103_260_512,
+    7_414_579_821_471_224_013,
+    9_520_647_030_890_121_554,
+    17_142_940_634_164_625_405,
+    9_187_037_984_654_475_102,
+    4_933_695_867_036_173_873,
+    3_035_992_416_931_960_321,
+    15_052_160_563_071_165_696,
+    5_876_081_268_917_084_809,
+    1_153_484_746_652_717_320,
+    6_365_855_841_584_713_735,
+    2_463_646_859_659_644_933,
+    1_453_259_901_463_176_960,
+    9_808_859_429_721_908_488,
+    2_829_141_021_535_244_552,
+    576_619_101_540_319_252,
+    5_804_014_844_877_275_314,
+    4_774_660_099_383_771_136,
+    328_785_038_479_458_864,
+    2_360_590_652_863_023_124,
+    569_550_314_443_282,
+    17_563_974_527_758_635_567,
+    11_698_101_887_533_589_556,
+    5_764_964_460_729_992_192,
+    6_953_579_832_080_335_136,
+    1_318_441_160_687_747_328,
+    8_090_717_009_753_444_376,
+    16_751_172_641_200_572_929,
+    5_558_033_503_209_157_252,
+    17_100_156_536_247_493_656,
+    7_899_286_223_048_400_564,
+    4_845_135_427_956_654_145,
+    2_368_485_888_099_072,
+    2_399_033_289_953_272_320,
+    6_976_678_428_284_034_058,
+    3_134_241_565_013_966_284,
+    8_661_609_558_376_259_840,
+    17_275_805_361_393_991_679,
+    15_391_050_065_516_657_151,
+    11_529_206_229_534_274_423,
+    9_876_416_274_250_600_448,
+    16_432_792_402_597_134_585,
+    11_975_705_497_012_863_580,
+    11_457_135_419_348_969_979,
+    9_763_749_252_098_620_046,
+    16_960_553_411_078_512_574,
+    15_563_877_356_819_111_679,
+    14_994_736_884_583_272_463,
+    9_441_297_368_950_544_394,
+    14_537_646_123_432_199_168,
+    9_888_547_162_215_157_388,
+    18_140_215_579_194_907_366,
+    18_374_682_062_228_545_019,
 ];
 
 pub const ROOK_SHIFTS: [u64; 64] = [
@@ -314,14 +324,14 @@ const fn rook_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
         r += 1;
     }
     // South
-    let mut r = rank as i32 - 1;
-    while r >= 0 {
-        let target = (r * 8 + file as i32) as usize;
+    let mut r = rank;
+    while r > 0 {
+        r -= 1;
+        let target = r * 8 + file;
         attacks |= 1 << target;
         if blockers & (1 << target) != 0 {
             break;
         }
-        r -= 1;
     }
     // East
     let mut f = file + 1;
@@ -334,14 +344,14 @@ const fn rook_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
         f += 1;
     }
     // West
-    let mut f = file as i32 - 1;
-    while f >= 0 {
-        let target = rank * 8 + f as usize;
+    let mut f = file;
+    while f > 0 {
+        f -= 1;
+        let target = rank * 8 + f;
         attacks |= 1 << target;
         if blockers & (1 << target) != 0 {
             break;
         }
-        f -= 1;
     }
     attacks
 }
@@ -364,43 +374,45 @@ const fn bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     }
     // North-West
     let mut r = rank + 1;
-    let mut f = file as i32 - 1;
-    while r < 8 && f >= 0 {
-        let target = r * 8 + f as usize;
+    let mut f = file;
+    while r < 8 && f > 0 {
+        f -= 1;
+        let target = r * 8 + f;
         attacks |= 1 << target;
         if blockers & (1 << target) != 0 {
             break;
         }
         r += 1;
-        f -= 1;
     }
     // South-East
-    let mut r = rank as i32 - 1;
+    let mut r = rank;
     let mut f = file + 1;
-    while r >= 0 && f < 8 {
-        let target = (r * 8 + f as i32) as usize;
+    while r > 0 && f < 8 {
+        r -= 1;
+        let target = r * 8 + f;
         attacks |= 1 << target;
         if blockers & (1 << target) != 0 {
             break;
         }
-        r -= 1;
         f += 1;
     }
     // South-West
-    let mut r = rank as i32 - 1;
-    let mut f = file as i32 - 1;
-    while r >= 0 && f >= 0 {
-        let target = (r * 8 + f) as usize;
+    let mut r = rank;
+    let mut f = file;
+    while r > 0 && f > 0 {
+        r -= 1;
+        f -= 1;
+        let target = r * 8 + f;
         attacks |= 1 << target;
         if blockers & (1 << target) != 0 {
             break;
         }
-        r -= 1;
-        f -= 1;
     }
     attacks
 }
 
+#[allow(clippy::large_stack_arrays)]
+#[allow(clippy::large_stack_frames)]
 const fn gen_rook_attacks() -> [[Bitboard; 4096]; 64] {
     let mut table = [[Bitboard(0); 4096]; 64];
     let mut sq = 0;
@@ -411,6 +423,7 @@ const fn gen_rook_attacks() -> [[Bitboard; 4096]; 64] {
         let mut blockers = 0;
         loop {
             let attacks = rook_attacks_for_blockers(sq, blockers);
+            #[allow(clippy::cast_possible_truncation)]
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
             table[sq][index] = Bitboard(attacks);
             blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
@@ -423,6 +436,8 @@ const fn gen_rook_attacks() -> [[Bitboard; 4096]; 64] {
     table
 }
 
+#[allow(clippy::large_stack_arrays)]
+#[allow(clippy::large_stack_frames)]
 const fn gen_bishop_attacks() -> [[Bitboard; 512]; 64] {
     let mut table = [[Bitboard(0); 512]; 64];
     let mut sq = 0;
@@ -433,6 +448,7 @@ const fn gen_bishop_attacks() -> [[Bitboard; 512]; 64] {
         let mut blockers = 0;
         loop {
             let attacks = bishop_attacks_for_blockers(sq, blockers);
+            #[allow(clippy::cast_possible_truncation)]
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
             table[sq][index] = Bitboard(attacks);
             blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
@@ -445,10 +461,13 @@ const fn gen_bishop_attacks() -> [[Bitboard; 512]; 64] {
     table
 }
 
-pub const ROOK_ATTACKS: [[Bitboard; 4096]; 64] = gen_rook_attacks();
+pub static ROOK_ATTACKS: [[Bitboard; 4096]; 64] = gen_rook_attacks();
 
-pub const BISHOP_ATTACKS: [[Bitboard; 512]; 64] = gen_bishop_attacks();
+pub static BISHOP_ATTACKS: [[Bitboard; 512]; 64] = gen_bishop_attacks();
 
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_sign_loss)]
 const fn gen_king_attacks() -> [Bitboard; 64] {
     let mut table = [Bitboard(0); 64];
 
@@ -472,7 +491,7 @@ const fn gen_king_attacks() -> [Bitboard; 64] {
                 let f = file as i16 + df;
 
                 if r >= 0 && r < 8 && f >= 0 && f < 8 {
-                    let target = (r * 8 + f) as u64;
+                    let target = (r * 8 + f) as usize;
                     attacks |= 1u64 << target;
                 }
 
@@ -518,7 +537,10 @@ const fn direction(from_i: i32, to_i: i32) -> i32 {
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap)]
 const fn between_mask(from: usize, to: usize) -> Bitboard {
+    #[allow(clippy::cast_possible_wrap)]
     let from_i = from as i32;
     let to_i = to as i32;
 
@@ -539,6 +561,7 @@ const fn between_mask(from: usize, to: usize) -> Bitboard {
     Bitboard(mask)
 }
 
+#[allow(clippy::large_stack_arrays)]
 const fn gen_between() -> [[Bitboard; 64]; 64] {
     let mut table = [[Bitboard(0); 64]; 64];
 
@@ -555,4 +578,4 @@ const fn gen_between() -> [[Bitboard; 64]; 64] {
     table
 }
 
-pub const BETWEEN: [[Bitboard; 64]; 64] = gen_between();
+pub static BETWEEN: [[Bitboard; 64]; 64] = gen_between();

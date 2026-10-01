@@ -8,7 +8,7 @@ pub fn get_random_move<H: BoardHistory>(board: &Board<H>, rng: &mut SmallRng) ->
     board.get_legal_moves_list(&mut moves);
     if moves.count == 0 || board.is_draw() {
         return None;
-    };
+    }
     let index = rng.random_range(0..moves.count);
     moves.get(index)
 }
@@ -34,7 +34,7 @@ impl Node {
         if !board.is_draw() {
             board.get_legal_moves_list(&mut moves);
         }
-        Node {
+        Self {
             parent,
             children: Vec::new(),
             untried_moves: moves,
@@ -53,13 +53,13 @@ impl Tree {
     fn new(board: &Board<MctsHistory>) -> Self {
         let mut moves = MoveList::new();
         board.get_legal_moves_list(&mut moves);
-        Tree {
+        Self {
             nodes: vec![Node::new(board, None, None)],
         }
     }
-
     fn best_uct_child(&self, parent_index: NodeIndex) -> Option<NodeIndex> {
         let parent = &self.nodes[parent_index];
+        #[allow(clippy::cast_precision_loss)]
         let parent_visits = parent.visits as f32;
 
         let mut best_child = parent.children.first().copied();
@@ -122,7 +122,6 @@ impl Tree {
     }
 
     fn rollout(
-        &self,
         board: &mut Board<MctsHistory>,
         move_buffer: &mut MoveList,
         rng: &mut SmallRng,
@@ -133,14 +132,12 @@ impl Tree {
             let num_moves = move_buffer.count;
             if num_moves == 0 {
                 if board.is_king_checked() {
-                    if board.side_to_move != starting_player {
-                        return 0.0; // Checkmate loss
-                    } else {
+                    if board.side_to_move == starting_player {
                         return 1.0; // Checkmate win
                     }
-                } else {
-                    break;
+                    return 0.0; // Checkmate loss
                 }
+                break;
             }
             let mv = move_buffer.get(rng.random_range(0..num_moves)).unwrap();
             board.make_move(mv);
@@ -161,7 +158,7 @@ impl Tree {
 }
 
 pub fn mcts_search(
-    board: &mut Board<FullHistory>,
+    board: &Board<FullHistory>,
     iteration_number: usize,
     rng: &mut SmallRng,
 ) -> Option<Move> {
@@ -179,7 +176,7 @@ pub fn mcts_search(
         let mut iteration_board = mcts_board.clone();
         let selected_node = tree.select(&mut iteration_board);
         let new_node = tree.expand(&mut iteration_board, selected_node, rng);
-        let score = tree.rollout(&mut iteration_board, &mut moves, rng);
+        let score = Tree::rollout(&mut iteration_board, &mut moves, rng);
         tree.backpropagate(new_node, score);
     }
 

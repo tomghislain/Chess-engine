@@ -54,9 +54,8 @@ fn negamax(
     if moves.count == 0 {
         if board.is_king_checked() {
             return -10000 + depth as isize;
-        } else {
-            return 0;
         }
+        return 0;
     }
 
     let mut best_score = isize::MIN;

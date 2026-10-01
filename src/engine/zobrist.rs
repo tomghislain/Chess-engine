@@ -11,22 +11,12 @@ pub struct Zobrist {
 static ZOBRIST: OnceLock<Zobrist> = OnceLock::new();
 
 fn init_zobrist() -> Zobrist {
-    let mut rng = StdRng::seed_from_u64(314159265);
-    let mut piece_square = [[0; 64]; 12];
-    for i in 0..12 {
-        for j in 0..64 {
-            piece_square[i][j] = rng.next_u64();
-        }
-    }
+    let mut rng = StdRng::seed_from_u64(314_159_265);
+    let piece_square: [[u64; 64]; 12] =
+        std::array::from_fn(|_| std::array::from_fn(|_| rng.next_u64()));
     let side = rng.next_u64();
-    let mut castling = [0; 16];
-    for i in 0..16 {
-        castling[i] = rng.next_u64();
-    }
-    let mut en_passant = [0; 8];
-    for i in 0..8 {
-        en_passant[i] = rng.next_u64();
-    }
+    let castling: [u64; 16] = std::array::from_fn(|_| rng.next_u64());
+    let en_passant: [u64; 8] = std::array::from_fn(|_| rng.next_u64());
     Zobrist {
         piece_square,
         side,
