@@ -381,6 +381,7 @@ impl Board<FullHistory> {
         board.history.hash_history[board.history.ply] = zobrist;
         board
     }
+
     pub fn unmake_move(&mut self, mv: Move) {
         // Pop undo stack and restore previous state
         let captured_piece = self.history.pop();
@@ -523,6 +524,28 @@ impl Clone for Board<MctsHistory> {
             side_to_move: self.side_to_move,
             history: self.history.clone(),
         }
+    }
+}
+
+impl Board<MctsHistory> {
+    pub fn perft(&self, depth: u8) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        if depth == 1 {
+            let mut count = 0;
+            self.feed_legal_moves(|_| count += 1);
+            return count;
+        }
+
+        let mut nodes = 0;
+        self.feed_legal_moves(|mv| {
+            let mut child = self.clone();
+            child.make_move(mv);
+            nodes += child.perft(depth - 1);
+        });
+        nodes
     }
 }
 

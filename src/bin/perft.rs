@@ -11,4 +11,14 @@ fn main() {
         board.perft(depth, &mut move_lists)
     );
     println!("Time taken: {:?}", start.elapsed());
+
+    // MCTS
+    let mcts_board = Board::new().to_mcts_board();
+    let start = std::time::Instant::now();
+    println!(
+        "Number of moves at depth (mcts) {}: {}",
+        depth,
+        mcts_board.perft(depth)
+    );
+    println!("Time taken: {:?}", start.elapsed());
 }
