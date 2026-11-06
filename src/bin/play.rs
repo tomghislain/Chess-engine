@@ -1,11 +1,7 @@
-mod ai;
-mod engine;
-mod gui;
-
-use crate::ai::{mcts, negamax};
-use crate::engine::{Board, Color, MoveList, Square};
+use chess_engine::ai::{mcts, negamax};
+use chess_engine::engine::{Board, Color, Square};
+use chess_engine::gui;
 use rand::rngs::SmallRng;
-use std::env;
 
 #[derive(Clone, Copy)]
 enum PlayerType {
@@ -29,38 +25,6 @@ impl std::fmt::Display for PlayerType {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if env::args().any(|arg| arg == "--bench") {
-        play_batch_game(true)
-    } else if env::args().any(|arg| arg == "--perft") {
-        let mut board = Board::new();
-        let depth = 7;
-        let mut move_lists = vec![MoveList::new(); depth as usize + 1];
-        let start = std::time::Instant::now();
-        println!(
-            "Number of moves at depth {}: {}",
-            depth,
-            board.perft(depth, &mut move_lists)
-        );
-        println!("Time taken: {:?}", start.elapsed());
-        Ok(())
-    } else if env::args().any(|arg| arg == "--mcts") {
-        let board = Board::new();
-        let mut rng: SmallRng = rand::make_rng();
-        let iterations = 100_000;
-        mcts::mcts_search(&board, iterations, &mut rng);
-        Ok(())
-    } else {
-        ask_action()
-    }
-}
-
-fn read_usize_input() -> Result<usize, Box<dyn std::error::Error>> {
-    let mut buffer = String::new();
-    std::io::stdin().read_line(&mut buffer)?;
-    Ok(buffer.trim().parse()?)
-}
-
-fn ask_action() -> Result<(), Box<dyn std::error::Error>> {
     let player_types = ["Single game", "Batch game"];
     for (index, r#type) in player_types.iter().enumerate() {
         println!("{index}. {type}");
@@ -70,9 +34,15 @@ fn ask_action() -> Result<(), Box<dyn std::error::Error>> {
         0 => play_single_game()?,
         1 => play_batch_game(false)?,
         _ => println!("Invalid input."),
-    }
+    };
 
     Ok(())
+}
+
+fn read_usize_input() -> Result<usize, Box<dyn std::error::Error>> {
+    let mut buffer = String::new();
+    std::io::stdin().read_line(&mut buffer)?;
+    Ok(buffer.trim().parse()?)
 }
 
 fn run_game(

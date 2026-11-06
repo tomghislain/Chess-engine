@@ -6,8 +6,16 @@ use std::io::Write;
 const SQ_HEIGHT: u16 = 3;
 const SQ_WIDTH: u16 = 6;
 const EMPTY_SQUARE_STRING: [&str; SQ_HEIGHT as usize] = ["      ", "      ", "      "];
-const DARK_SQUARE_COLOR: style::Color = style::Color::DarkGrey;
-const LIGHT_SQUARE_COLOR: style::Color = style::Color::Grey;
+const DARK_SQUARE_COLOR: style::Color = style::Color::Rgb {
+    r: 75,
+    g: 75,
+    b: 75,
+};
+const LIGHT_SQUARE_COLOR: style::Color = style::Color::Rgb {
+    r: 200,
+    g: 200,
+    b: 200,
+};
 const PIECE_STRINGS: [[&str; SQ_HEIGHT as usize]; 6] = [
     [" ▄▄▄  ", " ▀█▀  ", "▄███▄ "],
     [" ▄▄▄  ", "▀▀██  ", "▄███▄ "],
@@ -16,13 +24,33 @@ const PIECE_STRINGS: [[&str; SQ_HEIGHT as usize]; 6] = [
     ["  ▄   ", "▀▄█▄▀ ", "█████ "],
     ["  ▄   ", "▄▀█▀▄ ", "█████ "],
 ];
-const BLACK_PIECES_COLOR: style::Color = style::Color::Black;
-const WHITE_PIECES_COLOR: style::Color = style::Color::White;
-const PREVIOUS_MOVE_COLOR: style::Color = style::Color::Yellow;
-const SELECTED_SQUARE_COLOR: style::Color = style::Color::Blue;
-const POSSIBLE_SQUARES_COLOR: style::Color = style::Color::Red;
+const BLACK_PIECES_COLOR: style::Color = style::Color::Rgb { r: 0, g: 0, b: 0 };
+const WHITE_PIECES_COLOR: style::Color = style::Color::Rgb {
+    r: 255,
+    g: 255,
+    b: 255,
+};
+const PREVIOUS_MOVE_COLOR: style::Color = style::Color::Rgb {
+    r: 200,
+    g: 200,
+    b: 50,
+};
+const SELECTED_SQUARE_COLOR: style::Color = style::Color::Rgb {
+    r: 50,
+    g: 50,
+    b: 200,
+};
+const POSSIBLE_SQUARES_COLOR: style::Color = style::Color::Rgb {
+    r: 200,
+    g: 50,
+    b: 50,
+};
 const PROMOTION_STRING: [&str; SQ_HEIGHT as usize] = [" N  B ", "      ", " R  Q "];
-const PROMOTION_COLOR: style::Color = style::Color::DarkRed;
+const PROMOTION_COLOR: style::Color = style::Color::Rgb {
+    r: 150,
+    g: 10,
+    b: 10,
+};
 
 const fn sq_to_top_left(sq: u8) -> (u16, u16) {
     let (a1_col, a1_row) = (0, 7 * SQ_HEIGHT);

@@ -507,6 +507,12 @@ impl Board<FullHistory> {
     }
 }
 
+impl Default for Board<FullHistory> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Clone for Board<MctsHistory> {
     fn clone(&self) -> Self {
         Self {
