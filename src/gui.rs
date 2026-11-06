@@ -80,12 +80,12 @@ pub fn display_board<H: BoardHistory>(
 
         let index = ((sq_index ^ (sq_index >> 3)) & 1) as usize;
         let sq_colors = [DARK_SQUARE_COLOR, LIGHT_SQUARE_COLOR];
-        let sq_color = if let Some((previous_from, previous_to)) = previous_move_squares
+        let sq_color = if possible_to_squares.contains(&Square(sq_index)) {
+            POSSIBLE_SQUARES_COLOR
+        } else if let Some((previous_from, previous_to)) = previous_move_squares
             && (sq == previous_from || sq == previous_to)
         {
             PREVIOUS_MOVE_COLOR
-        } else if possible_to_squares.contains(&Square(sq_index)) {
-            POSSIBLE_SQUARES_COLOR
         } else if let Some(from_sq) = move_from
             && sq_index == from_sq
         {
