@@ -158,6 +158,7 @@ pub fn get_player_move<H: BoardHistory>(
     let mut stdout = std::io::stdout();
     let _ = execute!(stdout, event::EnableMouseCapture);
     let _ = execute!(stdout, cursor::Hide);
+    let _ = crossterm::terminal::enable_raw_mode();
     let mut from: Option<u8> = None;
     let mut legal_moves = MoveList::new();
     board.get_legal_moves_list(&mut legal_moves);
@@ -231,6 +232,9 @@ pub fn get_player_move<H: BoardHistory>(
             && code == event::KeyCode::Char('c')
             && modifiers == event::KeyModifiers::CONTROL
         {
+            let _ = execute!(stdout, event::DisableMouseCapture);
+            let _ = execute!(stdout, terminal::Clear(terminal::ClearType::All));
+            let _ = crossterm::terminal::disable_raw_mode();
             panic!("UserInterrupt");
         }
     }

@@ -56,7 +56,6 @@ fn run_game(
 
     loop {
         if show_gui {
-            crossterm::terminal::enable_raw_mode()?;
             gui::display_board(&board, last_move_squares, None, &Vec::new());
         }
 
@@ -78,10 +77,6 @@ fn run_game(
         };
 
         if let Some(mv) = mv_result {
-            if show_gui {
-                crossterm::terminal::disable_raw_mode()?;
-            }
-
             board.make_move(mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
