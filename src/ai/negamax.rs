@@ -1,4 +1,4 @@
-use crate::engine::{Board, Move, MoveList, board::FullHistory};
+use crate::engine::{GameStruct, Move, MoveList};
 use std::collections::HashMap;
 
 enum TTFlag {
@@ -17,14 +17,14 @@ struct TTEntry {
 type TranspositionTable = HashMap<u64, TTEntry>;
 
 fn negamax(
-    board: &mut Board<FullHistory>,
+    game: &mut GameStruct,
     depth: u8,
     mut alpha: isize,
     mut beta: isize,
     tt: &mut TranspositionTable,
 ) -> isize {
     let original_alpha = alpha;
-    let hash = board.zobrist();
+    let hash = game.b.hash;
 
     // Check transposition table
     if let Some(entry) = tt.get(&hash)
@@ -41,19 +41,19 @@ fn negamax(
         }
     }
 
-    if board.is_draw() {
+    if game.is_draw() {
         return 0;
     }
 
     if depth == 0 {
-        return board.material_evaluation();
+        return game.b.material_evaluation();
     }
 
     let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
+    game.b.get_legal_moves_list(&mut moves);
     if moves.count == 0 {
-        if board.is_king_checked() {
-            return -10000 + depth as isize;
+        if game.b.is_king_checked() {
+            return -10000 - depth as isize;
         }
         return 0;
     }
@@ -61,9 +61,9 @@ fn negamax(
     let mut best_score = isize::MIN;
 
     for mv in moves.iter() {
-        board.make_move(*mv);
-        let score = -negamax(board, depth - 1, -beta, -alpha, tt);
-        board.unmake_move(*mv);
+        game.make_move(*mv);
+        let score = -negamax(game, depth - 1, -beta, -alpha, tt);
+        game.unmake_move();
 
         if score > best_score {
             best_score = score;
@@ -94,8 +94,8 @@ fn negamax(
     best_score
 }
 
-pub fn search_root(board: &mut Board<FullHistory>, depth: u8) -> Option<Move> {
-    if board.is_draw() || !board.has_legal_moves() {
+pub fn search_root(game: &mut GameStruct, depth: u8) -> Option<Move> {
+    if game.is_draw() || !game.b.has_legal_moves() {
         return None;
     }
     let mut tt = TranspositionTable::new();
@@ -105,11 +105,11 @@ pub fn search_root(board: &mut Board<FullHistory>, depth: u8) -> Option<Move> {
     let mut best_move = None;
 
     let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
+    game.b.get_legal_moves_list(&mut moves);
     for mv in moves.iter() {
-        board.make_move(*mv);
-        let score = -negamax(board, depth, alpha, beta, &mut tt);
-        board.unmake_move(*mv);
+        game.make_move(*mv);
+        let score = -negamax(game, depth, alpha, beta, &mut tt);
+        game.unmake_move();
 
         if score > best_score {
             best_score = score;

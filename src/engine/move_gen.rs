@@ -3,13 +3,13 @@ use crate::engine::bitboards::{
     FILE_A, FILE_H, KING_ATTACKS, KNIGHT_ATTACKS, RANK_2, RANK_7, ROOK_ATTACKS, ROOK_MAGIC_NUMBERS,
     ROOK_MASKS, ROOK_SHIFTS, WHITE_PAWN_ATTACKS,
 };
-use crate::engine::board::{BK_CASTLE, BQ_CASTLE, Board, BoardHistory, WK_CASTLE, WQ_CASTLE};
+use crate::engine::board::{BK_CASTLE, BQ_CASTLE, Board, WK_CASTLE, WQ_CASTLE};
 use crate::engine::types::{
     Bitboard, CAPTURE_FLAG, CASTLING_FLAG, Color, DOUBLE_PAWN_PUSH_FLAG, EN_PASSANT_FLAG, Move,
     MoveList, PROMOTION_FLAG, Piece, Square,
 };
 
-impl<H: BoardHistory> Board<H> {
+impl Board {
     #[allow(clippy::too_many_lines)]
     fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
@@ -212,8 +212,8 @@ impl<H: BoardHistory> Board<H> {
         }
 
         // En passant
-        if self.en_passant().as_u8() < 64 {
-            let to = self.en_passant();
+        if self.en_passant != Square::NO_SQUARE {
+            let to = self.en_passant;
             let en_passant_mask = Bitboard::from(to);
             let captured_mask = if IS_WHITE {
                 en_passant_mask >> 8
@@ -558,7 +558,7 @@ impl<H: BoardHistory> Board<H> {
     }
 
     fn gen_castling_moves(&self, f: &mut impl FnMut(Move), king_danger_squares: Bitboard) {
-        let castling_rights = self.castling();
+        let castling_rights = self.castling;
         match self.side_to_move {
             Color::White => {
                 if castling_rights & WK_CASTLE != 0

@@ -1,12 +1,36 @@
-use crate::engine::board::{BoardHistory, FullHistory, MctsHistory};
-use crate::engine::{Board, Move, MoveList};
+use crate::engine::{Board, GameStruct, Move, MoveList};
 use rand::RngExt;
 use rand::rngs::SmallRng;
 
-pub fn get_random_move<H: BoardHistory>(board: &Board<H>, rng: &mut SmallRng) -> Option<Move> {
+#[derive(Clone)]
+
+struct MctsGame {
+    b: Board,
+    hash_history: [u64; 256],
+}
+
+impl MctsGame {
+    fn from_fullgame(fullgame: &GameStruct) -> Self {
+        todo!()
+    }
+
+    fn make_move(&mut self, mv: Move) {
+        todo!()
+    }
+
+    fn is_threefold_repetition(&self) -> bool {
+        todo!()
+    }
+
+    fn is_draw(&self) -> bool {
+        self.b.is_draw() || self.is_threefold_repetition()
+    }
+}
+
+fn get_random_move(game: &MctsGame, rng: &mut SmallRng) -> Option<Move> {
     let mut moves = MoveList::new();
-    board.get_legal_moves_list(&mut moves);
-    if moves.count == 0 || board.is_draw() {
+    game.b.get_legal_moves_list(&mut moves);
+    if moves.count == 0 || game.is_draw() {
         return None;
     }
     let index = rng.random_range(0..moves.count);
@@ -25,14 +49,10 @@ struct Node {
 }
 
 impl Node {
-    fn new(
-        board: &Board<MctsHistory>,
-        parent: Option<NodeIndex>,
-        parent_move: Option<Move>,
-    ) -> Self {
+    fn new(game: &MctsGame, parent: Option<NodeIndex>, parent_move: Option<Move>) -> Self {
         let mut moves = MoveList::new();
-        if !board.is_draw() {
-            board.get_legal_moves_list(&mut moves);
+        if !game.is_draw() {
+            game.b.get_legal_moves_list(&mut moves);
         }
         Self {
             parent,
@@ -50,11 +70,11 @@ struct Tree {
 }
 
 impl Tree {
-    fn new(board: &Board<MctsHistory>) -> Self {
+    fn new(game: &MctsGame) -> Self {
         let mut moves = MoveList::new();
-        board.get_legal_moves_list(&mut moves);
+        game.b.get_legal_moves_list(&mut moves);
         Self {
-            nodes: vec![Node::new(board, None, None)],
+            nodes: vec![Node::new(game, None, None)],
         }
     }
     fn best_uct_child(&self, parent_index: NodeIndex) -> Option<NodeIndex> {
@@ -84,13 +104,13 @@ impl Tree {
         best_child
     }
 
-    fn select(&self, board: &mut Board<MctsHistory>) -> NodeIndex {
+    fn select(&self, game: &mut MctsGame) -> NodeIndex {
         let mut current: NodeIndex = 0; // Start at root
         while self.nodes[current].untried_moves.count == 0
             && !self.nodes[current].children.is_empty()
         {
             if let Some(best_child_index) = self.best_uct_child(current) {
-                board.make_move(self.nodes[best_child_index].parent_move.unwrap());
+                game.make_move(self.nodes[best_child_index].parent_move.unwrap());
                 current = best_child_index;
             } else {
                 break;
@@ -99,21 +119,16 @@ impl Tree {
         current
     }
 
-    fn expand(
-        &mut self,
-        board: &mut Board<MctsHistory>,
-        node: NodeIndex,
-        rng: &mut SmallRng,
-    ) -> NodeIndex {
+    fn expand(&mut self, game: &mut MctsGame, node: NodeIndex, rng: &mut SmallRng) -> NodeIndex {
         if self.nodes[node].untried_moves.count == 0 {
             return node;
         }
         let index = rng.random_range(0..self.nodes[node].untried_moves.count);
         if let Some(untried_move) = self.nodes[node].untried_moves.swap_pop(index) {
-            board.make_move(untried_move);
+            game.make_move(untried_move);
             let child_idx = self.nodes.len();
             self.nodes
-                .push(Node::new(board, Some(node), Some(untried_move)));
+                .push(Node::new(game, Some(node), Some(untried_move)));
             self.nodes[node].children.push(child_idx);
             child_idx
         } else {
@@ -121,18 +136,14 @@ impl Tree {
         }
     }
 
-    fn rollout(
-        board: &mut Board<MctsHistory>,
-        move_buffer: &mut MoveList,
-        rng: &mut SmallRng,
-    ) -> f32 {
-        let starting_player = board.side_to_move;
-        while !board.is_draw() {
-            board.get_legal_moves_list(move_buffer);
+    fn rollout(game: &mut MctsGame, move_buffer: &mut MoveList, rng: &mut SmallRng) -> f32 {
+        let starting_player = game.b.side_to_move;
+        while !game.is_draw() {
+            game.b.get_legal_moves_list(move_buffer);
             let num_moves = move_buffer.count;
             if num_moves == 0 {
-                if board.is_king_checked() {
-                    if board.side_to_move == starting_player {
+                if game.b.is_king_checked() {
+                    if game.b.side_to_move == starting_player {
                         return 1.0; // Checkmate win
                     }
                     return 0.0; // Checkmate loss
@@ -140,7 +151,7 @@ impl Tree {
                 break;
             }
             let mv = move_buffer.get(rng.random_range(0..num_moves)).unwrap();
-            board.make_move(mv);
+            game.make_move(mv);
         }
         0.5 // Draw
     }
@@ -158,14 +169,14 @@ impl Tree {
 }
 
 pub fn mcts_search(
-    board: &Board<FullHistory>,
+    fullgame: &GameStruct,
     iteration_number: usize,
     rng: &mut SmallRng,
 ) -> Option<Move> {
-    let mcts_board = board.to_mcts_board();
+    let mcts_board = MctsGame::from_fullgame(fullgame);
     let mut moves = MoveList::new();
-    mcts_board.get_legal_moves_list(&mut moves);
-    if board.is_draw() || moves.count == 0 {
+    mcts_board.b.get_legal_moves_list(&mut moves);
+    if fullgame.is_draw() || moves.count == 0 {
         return None;
     }
 

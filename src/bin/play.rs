@@ -1,5 +1,5 @@
 use chess_engine::ai::{mcts, negamax};
-use chess_engine::engine::{Board, Color, Square};
+use chess_engine::engine::{Board, Color, GameStruct, Square};
 use chess_engine::gui;
 use rand::rngs::SmallRng;
 
@@ -50,16 +50,16 @@ fn run_game(
     black: PlayerType,
     show_gui: bool,
 ) -> Result<Option<Color>, Box<dyn std::error::Error>> {
-    let mut board = Board::new();
+    let mut game = GameStruct::new();
     let mut last_move_squares: Option<(Square, Square)> = None;
     let mut rng: SmallRng = rand::make_rng();
 
     loop {
         if show_gui {
-            gui::display_board(&board, last_move_squares, None, &Vec::new());
+            gui::display_board(&game, last_move_squares, None, &Vec::new());
         }
 
-        let current_player = match board.side_to_move {
+        let current_player = match game.b.side_to_move {
             Color::White => white,
             Color::Black => black,
         };
@@ -69,29 +69,29 @@ fn run_game(
                 if !show_gui {
                     return Err("Input not supported in batch mode.".into());
                 }
-                gui::get_player_move(&board, last_move_squares)
+                gui::get_player_move(&game, last_move_squares)
             }
-            PlayerType::RandomMove => mcts::get_random_move(&board, &mut rng),
-            PlayerType::Negamax { depth } => negamax::search_root(&mut board, depth),
-            PlayerType::Mcts { iterations } => mcts::mcts_search(&board, iterations, &mut rng),
+            PlayerType::RandomMove => game.get_random_move(&mut rng),
+            PlayerType::Negamax { depth } => negamax::search_root(&mut game, depth),
+            PlayerType::Mcts { iterations } => mcts::mcts_search(&game, iterations, &mut rng),
         };
 
         if let Some(mv) = mv_result {
-            board.make_move(mv);
+            game.make_move(mv);
             last_move_squares = Some((mv.from(), mv.to()));
         } else {
-            let result = if board.has_legal_moves() {
+            let result = if game.b.has_legal_moves() {
                 false
             } else {
-                board.is_king_checked()
+                game.b.is_king_checked()
             };
 
             if show_gui {
-                gui::print_game_result(&board, result);
+                gui::print_game_result(&game, result);
             }
 
             if result {
-                return Ok(Some(board.side_to_move.flip()));
+                return Ok(Some(game.b.side_to_move.flip()));
             }
             return Ok(None);
         }

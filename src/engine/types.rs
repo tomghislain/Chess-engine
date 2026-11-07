@@ -117,6 +117,8 @@ impl Square {
     pub const fn as_usize(self) -> usize {
         self.0 as usize
     }
+
+    pub const NO_SQUARE: Self = Self(64);
 }
 
 #[derive(Clone)]

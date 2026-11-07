@@ -1,4 +1,4 @@
-use crate::engine::{Board, Move, MoveList, Piece, Square, board::BoardHistory, types};
+use crate::engine::{Board, GameStruct, Move, MoveList, Piece, Square, types};
 use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 
@@ -62,8 +62,8 @@ const fn sq_to_top_left(sq: u8) -> (u16, u16) {
     (col, row)
 }
 
-pub fn display_board<H: BoardHistory>(
-    board: &Board<H>,
+pub fn display_board(
+    game: &GameStruct,
     previous_move_squares: Option<(Square, Square)>,
     move_from: Option<u8>,
     possible_to_squares: &[Square],
@@ -95,8 +95,7 @@ pub fn display_board<H: BoardHistory>(
         };
 
         let _ = queue!(stdout, crossterm::style::SetBackgroundColor(sq_color),);
-        let piece = board.piece_at(Square(sq_index));
-        // TODO: match piece enum with corresponding ascii character
+        let piece = game.b.piece_at(Square(sq_index));
         let pieces_colors = [WHITE_PIECES_COLOR, BLACK_PIECES_COLOR];
         let (piece_string, piece_color) = if piece == Piece::None {
             (EMPTY_SQUARE_STRING, style::Color::Red)
@@ -148,11 +147,11 @@ const fn coords_to_sq(col: u16, row: u16) -> Option<u8> {
     }
 }
 
-pub fn get_player_move<H: BoardHistory>(
-    board: &Board<H>,
+pub fn get_player_move(
+    game: &GameStruct,
     previous_move_squares: Option<(Square, Square)>,
 ) -> Option<Move> {
-    if !board.has_legal_moves() || board.is_draw() {
+    if !game.b.has_legal_moves() || game.is_draw() {
         return None;
     }
     let mut stdout = std::io::stdout();
@@ -161,7 +160,7 @@ pub fn get_player_move<H: BoardHistory>(
     let _ = crossterm::terminal::enable_raw_mode();
     let mut from: Option<u8> = None;
     let mut legal_moves = MoveList::new();
-    board.get_legal_moves_list(&mut legal_moves);
+    game.b.get_legal_moves_list(&mut legal_moves);
     let mut possible_moves = MoveList::new();
     loop {
         let read_event = event::read();
@@ -184,7 +183,7 @@ pub fn get_player_move<H: BoardHistory>(
                         }
                         std::cmp::Ordering::Greater => {
                             let promotion_piece =
-                                get_promotion_piece(clicked_sq, board.side_to_move);
+                                get_promotion_piece(clicked_sq, game.b.side_to_move);
                             return Some(
                                 **valid_moves
                                     .iter()
@@ -225,7 +224,7 @@ pub fn get_player_move<H: BoardHistory>(
             } else {
                 Vec::new()
             };
-            display_board(board, previous_move_squares, from, &possible_to_squares);
+            display_board(game, previous_move_squares, from, &possible_to_squares);
         } else if let Ok(event::Event::Key(event::KeyEvent {
             code, modifiers, ..
         })) = read_event
@@ -316,13 +315,13 @@ fn get_promotion_piece(sq: u8, color: types::Color) -> Piece {
     }
 }
 
-pub fn print_game_result<H: BoardHistory>(board: &Board<H>, result: bool) {
+pub fn print_game_result(game: &GameStruct, result: bool) {
     let mut stdout = std::io::stdout();
 
     let result_row = 8 * SQ_HEIGHT;
 
     let result_string = if result {
-        format!("{} has won!", board.side_to_move.flip())
+        format!("{} has won!", game.b.side_to_move.flip())
     } else {
         "Draw!".to_string()
     };

@@ -1,19 +1,20 @@
-use chess_engine::engine::{Board, MoveList};
+use chess_engine::engine::{Board, GameStruct, MoveList};
 
 fn main() {
-    let mut board = Board::new();
+    // GameStruct with undo_stack
+    let mut game = GameStruct::new();
     let depth = 7;
     let mut move_lists = vec![MoveList::new(); depth as usize + 1];
     let start = std::time::Instant::now();
     println!(
         "Number of moves at depth {}: {}",
         depth,
-        board.perft(depth, &mut move_lists)
+        game.perft(depth, &mut move_lists)
     );
     println!("Time taken: {:?}", start.elapsed());
 
-    // MCTS
-    let mcts_board = Board::new().to_mcts_board();
+    // Board only
+    let mcts_board = Board::new();
     let start = std::time::Instant::now();
     println!(
         "Number of moves at depth (mcts) {}: {}",
