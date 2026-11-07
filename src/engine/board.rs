@@ -100,6 +100,19 @@ pub struct Undo {
     pub hash: u64,
 }
 
+impl Default for Undo {
+    fn default() -> Self {
+        Self {
+            mv: Move::default(),
+            captured_piece: Piece::None,
+            castling: 0,
+            en_passant: Square::NO_SQUARE,
+            halfmove_clock: 0,
+            hash: 0,
+        }
+    }
+}
+
 impl Board {
     fn compute_zobrist(&self) -> u64 {
         let z = zobrist::zobrist();

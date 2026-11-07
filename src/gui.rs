@@ -1,4 +1,4 @@
-use crate::engine::{Board, GameStruct, Move, MoveList, Piece, Square, types};
+use crate::engine::{GameStruct, Move, MoveList, Piece, Square, types};
 use crossterm::{cursor, event, execute, queue, style, terminal};
 use std::io::Write;
 

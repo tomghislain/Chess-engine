@@ -70,6 +70,12 @@ pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 4;
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]
 pub struct Move(u32);
 
+impl Default for Move {
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
 impl Move {
     pub fn new(from: Square, to: Square, promotion_piece: Piece, flags: u8) -> Self {
         Self(

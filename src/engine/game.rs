@@ -4,26 +4,31 @@ use crate::engine::{Board, Move};
 use rand::RngExt;
 use rand::rngs::SmallRng;
 
+const MAX_GAME_LENGTH: usize = 1024;
+
 pub struct GameStruct {
     pub b: Board,
-    undo_stack: Vec<Undo>,
+    undo_stack: [Undo; MAX_GAME_LENGTH],
+    ply: usize,
 }
 
 impl GameStruct {
     pub fn new() -> Self {
         Self {
             b: Board::new(),
-            undo_stack: Vec::new(),
+            undo_stack: [Undo::default(); MAX_GAME_LENGTH],
+            ply: 0,
         }
     }
 
     pub fn make_move(&mut self, mv: Move) {
-        self.undo_stack.push(self.b.make_move(mv))
+        self.undo_stack[self.ply] = self.b.make_move(mv);
+        self.ply += 1;
     }
 
     pub fn unmake_move(&mut self) {
-        let undo = self.undo_stack.pop().expect("No move to unmake");
-        self.b.unmake_move(undo)
+        self.ply -= 1;
+        self.b.unmake_move(self.undo_stack[self.ply])
     }
 
     fn is_threefold_repetition(&self) -> bool {
