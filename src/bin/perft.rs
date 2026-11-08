@@ -17,7 +17,7 @@ fn main() {
     let mcts_board = Board::new();
     let start = std::time::Instant::now();
     println!(
-        "Number of moves at depth (mcts) {}: {}",
+        "Number of moves at depth (copy-only) {}: {}",
         depth,
         mcts_board.perft(depth)
     );
