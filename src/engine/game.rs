@@ -14,9 +14,9 @@ pub struct GameStruct {
 }
 
 impl GameStruct {
-    pub fn new() -> Self {
+    pub fn from_fen(fen: &str) -> Self {
         Self {
-            b: Board::new(),
+            b: Board::from_fen(fen),
             undo_stack: [Undo::default(); MAX_GAME_LENGTH],
             ply: 0,
         }
@@ -88,6 +88,10 @@ impl GameStruct {
 
 impl Default for GameStruct {
     fn default() -> Self {
-        Self::new()
+        Self {
+            b: Board::default(),
+            undo_stack: [Undo::default(); MAX_GAME_LENGTH],
+            ply: 0,
+        }
     }
 }

@@ -144,107 +144,65 @@ impl Board {
         hash
     }
 
-    pub fn new() -> Self {
+    pub fn from_fen(fen: &str) -> Self {
+        let mut f = fen.split_whitespace();
+
+        let placement_str = f.next().expect("No placement");
+        let side_str = f.next().expect("No side to move");
+        let castling_str = f.next().expect("No castling");
+        let en_passant_str = f.next().expect("No en passant");
+        let halfmove_str = f.next().unwrap_or("0");
+        // Fullmove is ignored as Board does not store it
+
         let mut pieces = [Bitboard(0); 12];
-
-        pieces[Piece::WP as usize] = Bitboard(
-            (1 << 8)
-                | (1 << 9)
-                | (1 << 10)
-                | (1 << 11)
-                | (1 << 12)
-                | (1 << 13)
-                | (1 << 14)
-                | (1 << 15),
-        );
-        pieces[Piece::WR as usize] = Bitboard((1 << 0) | (1 << 7));
-        pieces[Piece::WN as usize] = Bitboard((1 << 1) | (1 << 6));
-        pieces[Piece::WB as usize] = Bitboard((1 << 2) | (1 << 5));
-        pieces[Piece::WQ as usize] = Bitboard(1 << 3);
-        pieces[Piece::WK as usize] = Bitboard(1 << 4);
-
-        pieces[Piece::BP as usize] = Bitboard(
-            (1 << 48)
-                | (1 << 49)
-                | (1 << 50)
-                | (1 << 51)
-                | (1 << 52)
-                | (1 << 53)
-                | (1 << 54)
-                | (1 << 55),
-        );
-        pieces[Piece::BR as usize] = Bitboard((1 << 56) | (1 << 63));
-        pieces[Piece::BN as usize] = Bitboard((1 << 57) | (1 << 62));
-        pieces[Piece::BB as usize] = Bitboard((1 << 58) | (1 << 61));
-        pieces[Piece::BQ as usize] = Bitboard(1 << 59);
-        pieces[Piece::BK as usize] = Bitboard(1 << 60);
-
-        let mailbox = [
-            Piece::WR,
-            Piece::WN,
-            Piece::WB,
-            Piece::WQ,
-            Piece::WK,
-            Piece::WB,
-            Piece::WN,
-            Piece::WR,
-            Piece::WP,
-            Piece::WP,
-            Piece::WP,
-            Piece::WP,
-            Piece::WP,
-            Piece::WP,
-            Piece::WP,
-            Piece::WP,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::None,
-            Piece::BP,
-            Piece::BP,
-            Piece::BP,
-            Piece::BP,
-            Piece::BP,
-            Piece::BP,
-            Piece::BP,
-            Piece::BP,
-            Piece::BR,
-            Piece::BN,
-            Piece::BB,
-            Piece::BQ,
-            Piece::BK,
-            Piece::BB,
-            Piece::BN,
-            Piece::BR,
-        ];
+        let mut mailbox = [Piece::None; 64];
+        let mut ranks = 0;
+        for (i, rank_str) in placement_str.split('/').enumerate() {
+            if i >= 8 {
+                panic!("Too many ranks")
+            }
+            let rank = 7 - i;
+            let mut file = 0;
+            for c in rank_str.chars() {
+                if c.is_ascii_digit() {
+                    let d = c.to_digit(10).unwrap();
+                    if !(1..=8).contains(&d) {
+                        panic!("Wrong digit")
+                    }
+                    file += d;
+                } else {
+                    let p = match c {
+                        'P' => Piece::WP,
+                        'N' => Piece::WN,
+                        'B' => Piece::WB,
+                        'R' => Piece::WR,
+                        'Q' => Piece::WQ,
+                        'K' => Piece::WK,
+                        'p' => Piece::BP,
+                        'n' => Piece::BN,
+                        'b' => Piece::BB,
+                        'r' => Piece::BR,
+                        'q' => Piece::BQ,
+                        'k' => Piece::BK,
+                        _ => panic!("Invalid piece char"),
+                    };
+                    if file >= 8 {
+                        panic!("Bad rank length")
+                    }
+                    let sq = (rank * 8 + file as usize) as u8;
+                    pieces[p as usize] |= Bitboard(1u64 << sq);
+                    mailbox[sq as usize] = p;
+                    file += 1;
+                }
+            }
+            if file != 8 {
+                panic!("File is not of width 8")
+            }
+            ranks += 1;
+        }
+        if ranks != 8 {
+            panic!("Not 8 ranks")
+        }
 
         let color_occ = [
             pieces[Piece::WP as usize]
@@ -260,21 +218,54 @@ impl Board {
                 | pieces[Piece::BQ as usize]
                 | pieces[Piece::BK as usize],
         ];
+        let occ = color_occ[0] | color_occ[1];
 
-        let mut board = Self {
+        let side_to_move = match side_str {
+            "w" => Color::White,
+            "b" => Color::Black,
+            _ => panic!("Invalid side to move"),
+        };
+
+        let mut castling = 0u8;
+        if castling_str != "-" {
+            for c in castling_str.chars() {
+                castling |= match c {
+                    'K' => WK_CASTLE,
+                    'Q' => WQ_CASTLE,
+                    'k' => BK_CASTLE,
+                    'q' => BQ_CASTLE,
+                    _ => panic!("Invalid castling str"),
+                }
+            }
+        }
+
+        let en_passant = if en_passant_str == "-" {
+            Square::NO_SQUARE
+        } else {
+            let b = en_passant_str.as_bytes();
+            let f = b[0].wrapping_sub(b'a');
+            let r = b[1].wrapping_sub(b'1');
+            if f > 7 || r > 7 {
+                panic!("Invalid en passant str")
+            }
+            Square(r * 8 + f)
+        };
+
+        let halfmove_clock = halfmove_str.parse().expect("Invalid halfmove str");
+
+        let mut b = Self {
             pieces,
             color_occ,
             mailbox,
-            occ: color_occ[0] | color_occ[1],
-            side_to_move: Color::White,
-            castling: WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE,
-            en_passant: Square::NO_SQUARE,
-            halfmove_clock: 0,
+            occ,
+            side_to_move,
+            castling,
+            en_passant,
+            halfmove_clock,
             hash: 0,
         };
-
-        board.hash = board.compute_zobrist();
-        board
+        b.hash = b.compute_zobrist();
+        b
     }
 
     pub const fn piece_at(&self, sq: Square) -> Piece {
@@ -619,7 +610,7 @@ impl Board {
 
         let mut nodes = 0;
         self.feed_legal_moves(|mv| {
-            let mut child = self.clone();
+            let mut child = *self;
             child.make_move(mv);
             nodes += child.perft(depth - 1);
         });
@@ -628,7 +619,140 @@ impl Board {
 }
 
 impl Default for Board {
+    // fn default() -> Self {
+    //     Self::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+    // }
+
     fn default() -> Self {
-        Self::new()
+        let mut pieces = [Bitboard(0); 12];
+
+        pieces[Piece::WP as usize] = Bitboard(
+            (1 << 8)
+                | (1 << 9)
+                | (1 << 10)
+                | (1 << 11)
+                | (1 << 12)
+                | (1 << 13)
+                | (1 << 14)
+                | (1 << 15),
+        );
+        pieces[Piece::WR as usize] = Bitboard((1 << 0) | (1 << 7));
+        pieces[Piece::WN as usize] = Bitboard((1 << 1) | (1 << 6));
+        pieces[Piece::WB as usize] = Bitboard((1 << 2) | (1 << 5));
+        pieces[Piece::WQ as usize] = Bitboard(1 << 3);
+        pieces[Piece::WK as usize] = Bitboard(1 << 4);
+
+        pieces[Piece::BP as usize] = Bitboard(
+            (1 << 48)
+                | (1 << 49)
+                | (1 << 50)
+                | (1 << 51)
+                | (1 << 52)
+                | (1 << 53)
+                | (1 << 54)
+                | (1 << 55),
+        );
+        pieces[Piece::BR as usize] = Bitboard((1 << 56) | (1 << 63));
+        pieces[Piece::BN as usize] = Bitboard((1 << 57) | (1 << 62));
+        pieces[Piece::BB as usize] = Bitboard((1 << 58) | (1 << 61));
+        pieces[Piece::BQ as usize] = Bitboard(1 << 59);
+        pieces[Piece::BK as usize] = Bitboard(1 << 60);
+
+        let mailbox = [
+            Piece::WR,
+            Piece::WN,
+            Piece::WB,
+            Piece::WQ,
+            Piece::WK,
+            Piece::WB,
+            Piece::WN,
+            Piece::WR,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::WP,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::None,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BP,
+            Piece::BR,
+            Piece::BN,
+            Piece::BB,
+            Piece::BQ,
+            Piece::BK,
+            Piece::BB,
+            Piece::BN,
+            Piece::BR,
+        ];
+
+        let color_occ = [
+            pieces[Piece::WP as usize]
+                | pieces[Piece::WN as usize]
+                | pieces[Piece::WB as usize]
+                | pieces[Piece::WR as usize]
+                | pieces[Piece::WQ as usize]
+                | pieces[Piece::WK as usize],
+            pieces[Piece::BP as usize]
+                | pieces[Piece::BN as usize]
+                | pieces[Piece::BB as usize]
+                | pieces[Piece::BR as usize]
+                | pieces[Piece::BQ as usize]
+                | pieces[Piece::BK as usize],
+        ];
+
+        let mut board = Self {
+            pieces,
+            color_occ,
+            mailbox,
+            occ: color_occ[0] | color_occ[1],
+            side_to_move: Color::White,
+            castling: WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE,
+            en_passant: Square::NO_SQUARE,
+            halfmove_clock: 0,
+            hash: 0,
+        };
+
+        board.hash = board.compute_zobrist();
+        board
     }
 }

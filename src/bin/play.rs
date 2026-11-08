@@ -1,5 +1,5 @@
 use chess_engine::ai::{mcts, negamax};
-use chess_engine::engine::{Board, Color, GameStruct, Square};
+use chess_engine::engine::{Color, GameStruct, Square};
 use chess_engine::gui;
 use rand::rngs::SmallRng;
 
@@ -50,7 +50,7 @@ fn run_game(
     black: PlayerType,
     show_gui: bool,
 ) -> Result<Option<Color>, Box<dyn std::error::Error>> {
-    let mut game = GameStruct::new();
+    let mut game = GameStruct::default();
     let mut last_move_squares: Option<(Square, Square)> = None;
     let mut rng: SmallRng = rand::make_rng();
 
