@@ -1,24 +1,34 @@
 use chess_engine::engine::{Board, GameStruct, MoveList};
+use std::env;
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 3 {
+        eprintln!("usage: {} <fen> <depth>", args[0]);
+        std::process::exit(1)
+    }
+
+    let fen = &args[1];
+    let depth: u8 = args[2].parse().unwrap_or_else(|_| {
+        eprintln!("depth must be an integer 0..=255");
+        std::process::exit(1)
+    });
+
+    println!("FEN: {fen}");
+    println!("Depth: {depth}");
+
     // GameStruct with undo_stack
-    let mut game = GameStruct::default();
-    let depth = 7;
+    let mut game = GameStruct::from_fen(fen);
     let mut move_lists = vec![MoveList::new(); depth as usize + 1];
     let start = std::time::Instant::now();
-    println!(
-        "Number of moves at depth {}: {}",
-        depth,
-        game.perft(depth, &mut move_lists)
-    );
+    println!("Number of moves : {}", game.perft(depth, &mut move_lists));
     println!("Time taken: {:?}", start.elapsed());
 
     // Board only
-    let mcts_board = Board::default();
+    let mcts_board = Board::from_fen(fen);
     let start = std::time::Instant::now();
     println!(
-        "Number of moves at depth (copy-only) {}: {}",
-        depth,
+        "Number of moves at depth (copy-only) :{}",
         mcts_board.perft(depth)
     );
     println!("Time taken: {:?}", start.elapsed());
