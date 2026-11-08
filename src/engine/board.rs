@@ -158,17 +158,13 @@ impl Board {
         let mut mailbox = [Piece::None; 64];
         let mut ranks = 0;
         for (i, rank_str) in placement_str.split('/').enumerate() {
-            if i >= 8 {
-                panic!("Too many ranks")
-            }
+            assert!(i < 8, "Too many ranks");
             let rank = 7 - i;
             let mut file = 0;
             for c in rank_str.chars() {
                 if c.is_ascii_digit() {
                     let d = c.to_digit(10).unwrap();
-                    if !(1..=8).contains(&d) {
-                        panic!("Wrong digit")
-                    }
+                    assert!((1..=8).contains(&d), "Invalid digit in placement");
                     file += d;
                 } else {
                     let p = match c {
@@ -186,23 +182,17 @@ impl Board {
                         'k' => Piece::BK,
                         _ => panic!("Invalid piece char"),
                     };
-                    if file >= 8 {
-                        panic!("Bad rank length")
-                    }
+                    assert!(file < 8, "Invalid rank length");
                     let sq = (rank * 8 + file as usize) as u8;
                     pieces[p as usize] |= Bitboard(1u64 << sq);
                     mailbox[sq as usize] = p;
                     file += 1;
                 }
             }
-            if file != 8 {
-                panic!("File is not of width 8")
-            }
+            assert!(file == 8, "Invalid file width");
             ranks += 1;
         }
-        if ranks != 8 {
-            panic!("Not 8 ranks")
-        }
+        assert!(ranks == 8, "Invalid rank amount");
 
         let color_occ = [
             pieces[Piece::WP as usize]
@@ -245,9 +235,7 @@ impl Board {
             let b = en_passant_str.as_bytes();
             let f = b[0].wrapping_sub(b'a');
             let r = b[1].wrapping_sub(b'1');
-            if f > 7 || r > 7 {
-                panic!("Invalid en passant str")
-            }
+            assert!(f < 8 && r < 8, "Invalid en passant str");
             Square(r * 8 + f)
         };
 
@@ -754,5 +742,71 @@ impl Default for Board {
 
         board.hash = board.compute_zobrist();
         board
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_position() {
+        let b = Board::default();
+        assert!(b.perft(0) == 1);
+        assert!(b.perft(1) == 20);
+        assert!(b.perft(2) == 400);
+        assert!(b.perft(3) == 8_902);
+        assert!(b.perft(4) == 197_281);
+        assert!(b.perft(5) == 4_865_609);
+        assert!(b.perft(6) == 119_060_324);
+        // assert!(b.perft(7) == 3_195_901_860);
+        // assert!(b.perft(8) == 84_998_976_956);
+        // assert!(b.perft(9) == 2_439_530_234_167);
+    }
+
+    #[test]
+    fn kiwipete() {
+        let b =
+            Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ");
+        assert!(b.perft(1) == 48);
+        assert!(b.perft(2) == 2_039);
+        assert!(b.perft(3) == 97_862);
+        assert!(b.perft(4) == 4_085_603);
+        assert!(b.perft(5) == 193_690_690);
+        // assert!(b.perft(6) == 8_031_647_685);
+    }
+
+    #[test]
+    fn postition3() {
+        let b = Board::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 ");
+        assert!(b.perft(1) == 14);
+        assert!(b.perft(2) == 191);
+        assert!(b.perft(3) == 2_812);
+        assert!(b.perft(4) == 43_238);
+        assert!(b.perft(5) == 674_624);
+        assert!(b.perft(6) == 11_030_083);
+        assert!(b.perft(7) == 178_633_661);
+        // assert!(b.perft(8) == 3_009_794_393);
+    }
+
+    #[test]
+    fn position4() {
+        let b = Board::from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+        assert!(b.perft(1) == 6);
+        assert!(b.perft(2) == 264);
+        assert!(b.perft(3) == 9_467);
+        assert!(b.perft(4) == 422_333);
+        assert!(b.perft(5) == 15_833_292);
+        // assert!(b.perft(6) == 706_045_033);
+    }
+
+    #[test]
+    fn position5() {
+        let b = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8  ");
+        assert!(b.perft(1) == 44);
+        assert!(b.perft(2) == 1_486);
+        assert!(b.perft(3) == 62_379);
+        assert!(b.perft(4) == 2_103_487);
+        assert!(b.perft(5) == 89_941_194);
     }
 }
