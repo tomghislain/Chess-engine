@@ -4,8 +4,9 @@ use crate::engine::{Board, Move};
 use rand::RngExt;
 use rand::rngs::SmallRng;
 
-const MAX_GAME_LENGTH: usize = 1024;
+const MAX_GAME_LENGTH: usize = 2048;
 
+#[derive(Clone)]
 pub struct GameStruct {
     pub b: Board,
     undo_stack: [Undo; MAX_GAME_LENGTH],

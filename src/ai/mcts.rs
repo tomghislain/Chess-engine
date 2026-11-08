@@ -2,8 +2,7 @@ use crate::engine::{Board, GameStruct, Move, MoveList};
 use rand::RngExt;
 use rand::rngs::SmallRng;
 
-#[derive(Clone)]
-
+#[derive(Clone, Copy)]
 struct MctsGame {
     b: Board,
     hash_history: [u64; 256],
@@ -11,30 +10,39 @@ struct MctsGame {
 
 impl MctsGame {
     fn from_fullgame(fullgame: &GameStruct) -> Self {
-        todo!()
+        let mut hashes = [0; 256];
+        let hmc = fullgame.b.halfmove_clock as usize;
+        hashes[hmc] = fullgame.b.hash;
+        let mut copy = fullgame.clone();
+        for i in 0..hmc {
+            copy.unmake_move();
+            hashes[hmc - i] = copy.b.hash;
+        }
+        Self {
+            b: fullgame.b,
+            hash_history: hashes,
+        }
     }
 
     fn make_move(&mut self, mv: Move) {
-        todo!()
+        self.hash_history[self.b.halfmove_clock as usize] = self.b.make_move(mv).hash;
     }
 
     fn is_threefold_repetition(&self) -> bool {
-        todo!()
+        self.hash_history[..self.b.halfmove_clock as usize]
+            .iter()
+            .rev()
+            .skip(1)
+            .step_by(2)
+            .filter(|&&h| h == self.b.hash)
+            .take(2)
+            .count()
+            >= 2
     }
 
     fn is_draw(&self) -> bool {
         self.b.is_draw() || self.is_threefold_repetition()
     }
-}
-
-fn get_random_move(game: &MctsGame, rng: &mut SmallRng) -> Option<Move> {
-    let mut moves = MoveList::new();
-    game.b.get_legal_moves_list(&mut moves);
-    if moves.count == 0 || game.is_draw() {
-        return None;
-    }
-    let index = rng.random_range(0..moves.count);
-    moves.get(index)
 }
 
 type NodeIndex = usize;
@@ -71,8 +79,6 @@ struct Tree {
 
 impl Tree {
     fn new(game: &MctsGame) -> Self {
-        let mut moves = MoveList::new();
-        game.b.get_legal_moves_list(&mut moves);
         Self {
             nodes: vec![Node::new(game, None, None)],
         }
@@ -88,12 +94,8 @@ impl Tree {
 
         for &child_idx in &parent.children {
             let child = &self.nodes[child_idx];
-            let uct = if child.visits == 0 {
-                f32::INFINITY
-            } else {
-                (child.wins / child.visits as f32)
-                    + c * (parent_visits.ln() / child.visits as f32).sqrt()
-            };
+            let uct = (1.0 - child.wins / child.visits as f32)
+                + c * (parent_visits.ln() / child.visits as f32).sqrt();
 
             if uct > best_uct {
                 best_uct = uct;
@@ -144,9 +146,9 @@ impl Tree {
             if num_moves == 0 {
                 if game.b.is_king_checked() {
                     if game.b.side_to_move == starting_player {
-                        return 1.0; // Checkmate win
+                        return 0.0; // Checkmate loss
                     }
-                    return 0.0; // Checkmate loss
+                    return 1.0; // Checkmate win
                 }
                 break;
             }
