@@ -498,7 +498,7 @@ impl Board {
         (pinned, pin_rays)
     }
 
-    const fn compute_block_mask(&self, king_sq: Square, checkers: Bitboard) -> Bitboard {
+    fn compute_block_mask(&self, king_sq: Square, checkers: Bitboard) -> Bitboard {
         let checker_sq = Square(checkers.trailing_zeros());
         let checker_piece = self.piece_at(checker_sq);
 
@@ -636,7 +636,7 @@ impl Board {
             } as usize]
                 .trailing_zeros(),
         );
-        debug_assert!(king_sq.as_u8() <= 64);
+        debug_assert!(king_sq.as_u8() < 64);
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
