@@ -1,7 +1,6 @@
 use crate::engine::bitboards::{
-    BETWEEN, BISHOP_ATTACKS, BISHOP_MAGIC_NUMBERS, BISHOP_MASKS, BISHOP_SHIFTS, BLACK_PAWN_ATTACKS,
-    FILE_A, FILE_H, KING_ATTACKS, KNIGHT_ATTACKS, RANK_2, RANK_7, ROOK_ATTACKS, ROOK_MAGIC_NUMBERS,
-    ROOK_MASKS, ROOK_SHIFTS, WHITE_PAWN_ATTACKS,
+    BETWEEN, BISHOP_ATTACKS, BLACK_PAWN_ATTACKS, FILE_A, FILE_H, KING_ATTACKS, KNIGHT_ATTACKS,
+    RANK_2, RANK_7, ROOK_ATTACKS, WHITE_PAWN_ATTACKS, bishop_attacks, rook_attacks,
 };
 use crate::engine::board::{BK_CASTLE, BQ_CASTLE, Board, WK_CASTLE, WQ_CASTLE};
 use crate::engine::types::{
@@ -279,12 +278,7 @@ impl Board {
 
         let diag_attackers = attacker_bishops | attacker_queens;
         if !diag_attackers.is_empty() {
-            let diag_mask = BISHOP_MASKS[sq_usize];
-            let diag_blockers = changed_occ & diag_mask;
-            #[allow(clippy::cast_possible_truncation)]
-            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize])
-                >> BISHOP_SHIFTS[sq_usize]) as usize;
-            let diag_attacks = BISHOP_ATTACKS[sq_usize][diag_idx];
+            let diag_attacks = bishop_attacks(sq_usize, changed_occ);
             if !(diag_attacks & diag_attackers).is_empty() {
                 return true;
             }
@@ -292,12 +286,7 @@ impl Board {
 
         let orth_attackers = attacker_rooks | attacker_queens;
         if !orth_attackers.is_empty() {
-            let orth_mask = ROOK_MASKS[sq_usize];
-            let orth_blockers = changed_occ & orth_mask;
-            #[allow(clippy::cast_possible_truncation)]
-            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize])
-                >> ROOK_SHIFTS[sq_usize]) as usize;
-            let orth_attacks = ROOK_ATTACKS[sq_usize][orth_idx];
+            let orth_attacks = rook_attacks(sq_usize, changed_occ);
             if !(orth_attacks & orth_attackers).is_empty() {
                 return true;
             }
@@ -346,18 +335,10 @@ impl Board {
         for from in free_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
-                let blockers = self.occ & ROOK_MASKS[from.as_usize()];
-                #[allow(clippy::cast_possible_truncation)]
-                let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
-                    >> ROOK_SHIFTS[from.as_usize()]) as usize;
-                attacks |= ROOK_ATTACKS[from.as_usize()][idx];
+                attacks |= rook_attacks(from.as_usize(), self.occ);
             }
             if IS_BISHOP {
-                let blockers = self.occ & BISHOP_MASKS[from.as_usize()];
-                #[allow(clippy::cast_possible_truncation)]
-                let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
-                    >> BISHOP_SHIFTS[from.as_usize()]) as usize;
-                attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
+                attacks |= bishop_attacks(from.as_usize(), self.occ);
             }
             attacks &= base_mask;
 
@@ -373,18 +354,10 @@ impl Board {
         for from in pinned_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
-                let blockers = self.occ & ROOK_MASKS[from.as_usize()];
-                #[allow(clippy::cast_possible_truncation)]
-                let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[from.as_usize()])
-                    >> ROOK_SHIFTS[from.as_usize()]) as usize;
-                attacks |= ROOK_ATTACKS[from.as_usize()][idx];
+                attacks |= rook_attacks(from.as_usize(), self.occ);
             }
             if IS_BISHOP {
-                let blockers = self.occ & BISHOP_MASKS[from.as_usize()];
-                #[allow(clippy::cast_possible_truncation)]
-                let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[from.as_usize()])
-                    >> BISHOP_SHIFTS[from.as_usize()]) as usize;
-                attacks |= BISHOP_ATTACKS[from.as_usize()][idx];
+                attacks |= bishop_attacks(from.as_usize(), self.occ);
             }
             attacks &= base_mask & pin_rays[from.as_usize()];
 
@@ -430,20 +403,10 @@ impl Board {
             danger |= KNIGHT_ATTACKS[sq.as_usize()];
         }
         for sq in diag_pieces {
-            let mask = BISHOP_MASKS[sq.as_usize()];
-            let blockers = kingless_occ & mask;
-            #[allow(clippy::cast_possible_truncation)]
-            let idx = (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq.as_usize()])
-                >> BISHOP_SHIFTS[sq.as_usize()]) as usize;
-            danger |= BISHOP_ATTACKS[sq.as_usize()][idx];
+            danger |= bishop_attacks(sq.as_usize(), kingless_occ);
         }
         for sq in orth_pieces {
-            let mask = ROOK_MASKS[sq.as_usize()];
-            let blockers = kingless_occ & mask;
-            #[allow(clippy::cast_possible_truncation)]
-            let idx = (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq.as_usize()])
-                >> ROOK_SHIFTS[sq.as_usize()]) as usize;
-            danger |= ROOK_ATTACKS[sq.as_usize()][idx];
+            danger |= rook_attacks(sq.as_usize(), kingless_occ);
         }
         danger |= KING_ATTACKS[enemy_king.trailing_zeros() as usize];
 
@@ -491,20 +454,10 @@ impl Board {
         let knight_attacks = KNIGHT_ATTACKS[king_sq.as_usize()];
         checkers |= knight_attacks & knights;
 
-        let diag_mask = BISHOP_MASKS[king_sq.as_usize()];
-        let diag_blockers = diag_mask & self.occ;
-        #[allow(clippy::cast_possible_truncation)]
-        let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[king_sq.as_usize()])
-            >> BISHOP_SHIFTS[king_sq.as_usize()]) as usize;
-        let diag_attacks = BISHOP_ATTACKS[king_sq.as_usize()][diag_idx];
+        let diag_attacks = bishop_attacks(king_sq.as_usize(), self.occ);
         checkers |= diag_attacks & diag_pieces;
 
-        let orth_mask = ROOK_MASKS[king_sq.as_usize()];
-        let orth_blockers = orth_mask & self.occ;
-        #[allow(clippy::cast_possible_truncation)]
-        let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[king_sq.as_usize()])
-            >> ROOK_SHIFTS[king_sq.as_usize()]) as usize;
-        let orth_attacks = ROOK_ATTACKS[king_sq.as_usize()][orth_idx];
+        let orth_attacks = rook_attacks(king_sq.as_usize(), self.occ);
         checkers |= orth_attacks & orth_pieces;
 
         checkers
@@ -743,12 +696,7 @@ impl Board {
 
         let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
         if !diag_attackers.is_empty() {
-            let diag_mask = BISHOP_MASKS[sq_usize];
-            let diag_blockers = self.occ & diag_mask;
-            #[allow(clippy::cast_possible_truncation)]
-            let diag_idx = (diag_blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize])
-                >> BISHOP_SHIFTS[sq_usize]) as usize;
-            let diag_attacks = BISHOP_ATTACKS[sq_usize][diag_idx];
+            let diag_attacks = bishop_attacks(sq_usize, self.occ);
             if !(diag_attacks & diag_attackers).is_empty() {
                 return true;
             }
@@ -756,12 +704,7 @@ impl Board {
 
         let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
         if !orth_attackers.is_empty() {
-            let orth_mask = ROOK_MASKS[sq_usize];
-            let orth_blockers = self.occ & orth_mask;
-            #[allow(clippy::cast_possible_truncation)]
-            let orth_idx = (orth_blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize])
-                >> ROOK_SHIFTS[sq_usize]) as usize;
-            let orth_attacks = ROOK_ATTACKS[sq_usize][orth_idx];
+            let orth_attacks = rook_attacks(sq_usize, self.occ);
             if !(orth_attacks & orth_attackers).is_empty() {
                 return true;
             }

@@ -160,12 +160,12 @@ const fn gen_bishop_masks() -> [Bitboard; 64] {
     masks
 }
 
-pub const ROOK_MASKS: [Bitboard; 64] = gen_rook_masks();
+const ROOK_MASKS: [Bitboard; 64] = gen_rook_masks();
 
-pub const BISHOP_MASKS: [Bitboard; 64] = gen_bishop_masks();
+const BISHOP_MASKS: [Bitboard; 64] = gen_bishop_masks();
 
 // Magics and shift from https://github.com/SebLague/Chess-Coding-Adventure/
-pub const ROOK_MAGIC_NUMBERS: [u64; 64] = [
+const ROOK_MAGIC_NUMBERS: [u64; 64] = [
     468_374_916_371_625_120,
     18_428_729_537_625_841_661,
     2_531_023_729_696_186_408,
@@ -231,7 +231,7 @@ pub const ROOK_MAGIC_NUMBERS: [u64; 64] = [
     7_924_083_509_981_736_956,
     4_734_295_326_018_586_370,
 ];
-pub const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
+const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
     16_509_839_532_542_417_919,
     14_391_803_910_955_204_223,
     1_848_771_770_702_627_364,
@@ -298,18 +298,18 @@ pub const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
     18_374_682_062_228_545_019,
 ];
 
-pub const ROOK_SHIFTS: [u64; 64] = [
+const ROOK_SHIFTS: [u64; 64] = [
     52, 52, 52, 52, 52, 52, 52, 52, 53, 53, 53, 54, 53, 53, 54, 53, 53, 54, 54, 54, 53, 53, 54, 53,
     53, 54, 53, 53, 54, 54, 54, 53, 52, 54, 53, 53, 53, 53, 54, 53, 52, 53, 54, 54, 53, 53, 54, 53,
     53, 54, 54, 54, 53, 53, 54, 53, 52, 53, 53, 53, 53, 53, 53, 52,
 ];
-pub const BISHOP_SHIFTS: [u64; 64] = [
+const BISHOP_SHIFTS: [u64; 64] = [
     58, 60, 59, 59, 59, 59, 60, 58, 60, 59, 59, 59, 59, 59, 59, 60, 59, 59, 57, 57, 57, 57, 59, 59,
     59, 59, 57, 55, 55, 57, 59, 59, 59, 59, 57, 55, 55, 57, 59, 59, 59, 59, 57, 57, 57, 57, 59, 59,
     60, 60, 59, 59, 59, 59, 60, 60, 58, 60, 59, 59, 59, 59, 59, 58,
 ];
 
-const fn rook_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
+const fn gen_rook_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     let mut attacks = 0;
     let rank = sq / 8;
     let file = sq % 8;
@@ -356,7 +356,7 @@ const fn rook_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     attacks
 }
 
-const fn bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
+const fn gen_bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     let mut attacks = 0;
     let rank = sq / 8;
     let file = sq % 8;
@@ -422,7 +422,7 @@ const fn gen_rook_attacks() -> [[Bitboard; 4096]; 64] {
         let shift = ROOK_SHIFTS[sq];
         let mut blockers = 0;
         loop {
-            let attacks = rook_attacks_for_blockers(sq, blockers);
+            let attacks = gen_rook_attacks_for_blockers(sq, blockers);
             #[allow(clippy::cast_possible_truncation)]
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
             table[sq][index] = Bitboard(attacks);
@@ -447,7 +447,7 @@ const fn gen_bishop_attacks() -> [[Bitboard; 512]; 64] {
         let shift = BISHOP_SHIFTS[sq];
         let mut blockers = 0;
         loop {
-            let attacks = bishop_attacks_for_blockers(sq, blockers);
+            let attacks = gen_bishop_attacks_for_blockers(sq, blockers);
             #[allow(clippy::cast_possible_truncation)]
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
             table[sq][index] = Bitboard(attacks);
@@ -464,6 +464,22 @@ const fn gen_bishop_attacks() -> [[Bitboard; 512]; 64] {
 pub static ROOK_ATTACKS: [[Bitboard; 4096]; 64] = gen_rook_attacks();
 
 pub static BISHOP_ATTACKS: [[Bitboard; 512]; 64] = gen_bishop_attacks();
+
+pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
+    let mask = ROOK_MASKS[sq_usize];
+    let blockers = occ & mask;
+    let index =
+        (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize]) >> ROOK_SHIFTS[sq_usize]) as usize;
+    ROOK_ATTACKS[sq_usize][index]
+}
+
+pub fn bishop_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
+    let mask = BISHOP_MASKS[sq_usize];
+    let blockers = occ & mask;
+    let index =
+        (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize]) >> BISHOP_SHIFTS[sq_usize]) as usize;
+    BISHOP_ATTACKS[sq_usize][index]
+}
 
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_possible_wrap)]
