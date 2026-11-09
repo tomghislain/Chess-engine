@@ -8,9 +8,6 @@ codegen-units = 1
 lto = "fat"
 # debug = true
 
-[build]
-rustflags = ["-C", "target-cpu=native"]
-
 [dependencies]
 rand = "0.10"
 crossterm = "0.29.0"
