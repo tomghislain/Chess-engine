@@ -465,6 +465,7 @@ pub static ROOK_ATTACKS: [[Bitboard; 4096]; 64] = gen_rook_attacks();
 
 pub static BISHOP_ATTACKS: [[Bitboard; 512]; 64] = gen_bishop_attacks();
 
+#[inline(always)]
 pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     let mask = ROOK_MASKS[sq_usize];
     let blockers = occ & mask;
@@ -473,6 +474,7 @@ pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     ROOK_ATTACKS[sq_usize][index]
 }
 
+#[inline(always)]
 pub fn bishop_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     let mask = BISHOP_MASKS[sq_usize];
     let blockers = occ & mask;
