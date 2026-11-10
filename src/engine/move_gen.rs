@@ -1,7 +1,7 @@
 use crate::engine::bitboards::{
-    BETWEEN, BISHOP_ATTACKS, BISHOP_BLOCKER_POSSIBILITIES, BLACK_PAWN_ATTACKS, FILE_A, FILE_H,
-    KING_ATTACKS, KNIGHT_ATTACKS, RANK_2, RANK_7, ROOK_ATTACKS, ROOK_BLOCKER_POSSIBILITIES,
-    WHITE_PAWN_ATTACKS, bishop_attacks, rook_attacks,
+    BETWEEN, BISHOP_ATTACKS, BISHOP_STRIDE, BLACK_PAWN_ATTACKS, FILE_A, FILE_H, KING_ATTACKS,
+    KNIGHT_ATTACKS, RANK_2, RANK_7, ROOK_ATTACKS, ROOK_STRIDE, WHITE_PAWN_ATTACKS, bishop_attacks,
+    rook_attacks,
 };
 use crate::engine::board::{BK_CASTLE, BQ_CASTLE, Board, WK_CASTLE, WQ_CASTLE};
 use crate::engine::types::{
@@ -480,9 +480,8 @@ impl Board {
         };
 
         let potential_diag_attackers =
-            BISHOP_ATTACKS[king_sq.as_usize() * BISHOP_BLOCKER_POSSIBILITIES] & diag_pieces;
-        let potential_orth_attackers =
-            ROOK_ATTACKS[king_sq.as_usize() * ROOK_BLOCKER_POSSIBILITIES] & orth_pieces;
+            BISHOP_ATTACKS[king_sq.as_usize() * BISHOP_STRIDE] & diag_pieces;
+        let potential_orth_attackers = ROOK_ATTACKS[king_sq.as_usize() * ROOK_STRIDE] & orth_pieces;
 
         let attackers = potential_diag_attackers | potential_orth_attackers;
 

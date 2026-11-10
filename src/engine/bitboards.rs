@@ -1,7 +1,7 @@
 use crate::engine::types::Bitboard;
 
-pub const ROOK_BLOCKER_POSSIBILITIES: usize = 4096;
-pub const BISHOP_BLOCKER_POSSIBILITIES: usize = 512;
+pub const ROOK_STRIDE: usize = 4096;
+pub const BISHOP_STRIDE: usize = 512;
 
 pub const FILE_A: Bitboard = Bitboard(0x01_01_01_01_01_01_01_01);
 pub const FILE_B: Bitboard = Bitboard(0x02_02_02_02_02_02_02_02);
@@ -168,6 +168,7 @@ const ROOK_MASKS: [Bitboard; 64] = gen_rook_masks();
 const BISHOP_MASKS: [Bitboard; 64] = gen_bishop_masks();
 
 // Magics and shift from https://github.com/SebLague/Chess-Coding-Adventure/
+#[cfg(not(target_feature = "bmi2"))]
 const ROOK_MAGIC_NUMBERS: [u64; 64] = [
     468_374_916_371_625_120,
     18_428_729_537_625_841_661,
@@ -234,6 +235,7 @@ const ROOK_MAGIC_NUMBERS: [u64; 64] = [
     7_924_083_509_981_736_956,
     4_734_295_326_018_586_370,
 ];
+#[cfg(not(target_feature = "bmi2"))]
 const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
     16_509_839_532_542_417_919,
     14_391_803_910_955_204_223,
@@ -301,11 +303,13 @@ const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
     18_374_682_062_228_545_019,
 ];
 
+#[cfg(not(target_feature = "bmi2"))]
 const ROOK_SHIFTS: [u64; 64] = [
     52, 52, 52, 52, 52, 52, 52, 52, 53, 53, 53, 54, 53, 53, 54, 53, 53, 54, 54, 54, 53, 53, 54, 53,
     53, 54, 53, 53, 54, 54, 54, 53, 52, 54, 53, 53, 53, 53, 54, 53, 52, 53, 54, 54, 53, 53, 54, 53,
     53, 54, 54, 54, 53, 53, 54, 53, 52, 53, 53, 53, 53, 53, 53, 52,
 ];
+#[cfg(not(target_feature = "bmi2"))]
 const BISHOP_SHIFTS: [u64; 64] = [
     58, 60, 59, 59, 59, 59, 60, 58, 60, 59, 59, 59, 59, 59, 59, 60, 59, 59, 57, 57, 57, 57, 59, 59,
     59, 59, 57, 55, 55, 57, 59, 59, 59, 59, 57, 55, 55, 57, 59, 59, 59, 59, 57, 57, 57, 57, 59, 59,
@@ -414,20 +418,19 @@ const fn gen_bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     attacks
 }
 
-#[allow(clippy::large_stack_arrays)]
-#[allow(clippy::large_stack_frames)]
-const fn gen_rook_attacks() -> [Bitboard; ROOK_BLOCKER_POSSIBILITIES * 64] {
-    let mut table = [Bitboard(0); ROOK_BLOCKER_POSSIBILITIES * 64];
+#[cfg(not(target_feature = "bmi2"))]
+#[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
+const fn gen_rook_attacks() -> [Bitboard; ROOK_STRIDE * 64] {
+    let mut table = [Bitboard(0); ROOK_STRIDE * 64];
     let mut sq = 0;
     while sq < 64 {
-        let base = sq * ROOK_BLOCKER_POSSIBILITIES;
+        let base = sq * ROOK_STRIDE;
         let mask = ROOK_MASKS[sq];
         let magic = ROOK_MAGIC_NUMBERS[sq];
         let shift = ROOK_SHIFTS[sq];
         let mut blockers = 0;
         loop {
             let attacks = gen_rook_attacks_for_blockers(sq, blockers);
-            #[allow(clippy::cast_possible_truncation)]
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
             table[base + index] = Bitboard(attacks);
             blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
@@ -440,20 +443,42 @@ const fn gen_rook_attacks() -> [Bitboard; ROOK_BLOCKER_POSSIBILITIES * 64] {
     table
 }
 
-#[allow(clippy::large_stack_arrays)]
-#[allow(clippy::large_stack_frames)]
-const fn gen_bishop_attacks() -> [Bitboard; BISHOP_BLOCKER_POSSIBILITIES * 64] {
-    let mut table = [Bitboard(0); BISHOP_BLOCKER_POSSIBILITIES * 64];
+#[cfg(target_feature = "bmi2")]
+#[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
+const fn gen_rook_attacks() -> [Bitboard; ROOK_STRIDE * 64] {
+    let mut table = [Bitboard(0); ROOK_STRIDE * 64];
     let mut sq = 0;
     while sq < 64 {
-        let base = sq * BISHOP_BLOCKER_POSSIBILITIES;
+        let base = sq * ROOK_STRIDE;
+        let mask = ROOK_MASKS[sq];
+        let mut blockers = 0;
+        loop {
+            let attacks = gen_rook_attacks_for_blockers(sq, blockers);
+            let index = pext_u64_const(blockers, mask.0) as usize;
+            table[base + index] = Bitboard(attacks);
+            blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
+            if blockers == 0 {
+                break;
+            }
+        }
+        sq += 1;
+    }
+    table
+}
+
+#[cfg(not(target_feature = "bmi2"))]
+#[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
+const fn gen_bishop_attacks() -> [Bitboard; BISHOP_STRIDE * 64] {
+    let mut table = [Bitboard(0); BISHOP_STRIDE * 64];
+    let mut sq = 0;
+    while sq < 64 {
+        let base = sq * BISHOP_STRIDE;
         let mask = BISHOP_MASKS[sq];
         let magic = BISHOP_MAGIC_NUMBERS[sq];
         let shift = BISHOP_SHIFTS[sq];
         let mut blockers = 0;
         loop {
             let attacks = gen_bishop_attacks_for_blockers(sq, blockers);
-            #[allow(clippy::cast_possible_truncation)]
             let index = ((blockers.wrapping_mul(magic)) >> shift) as usize;
             table[base + index] = Bitboard(attacks);
             blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
@@ -466,26 +491,59 @@ const fn gen_bishop_attacks() -> [Bitboard; BISHOP_BLOCKER_POSSIBILITIES * 64] {
     table
 }
 
-pub static ROOK_ATTACKS: [Bitboard; ROOK_BLOCKER_POSSIBILITIES * 64] = gen_rook_attacks();
+#[cfg(target_feature = "bmi2")]
+#[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
+const fn gen_bishop_attacks() -> [Bitboard; BISHOP_STRIDE * 64] {
+    let mut table = [Bitboard(0); BISHOP_STRIDE * 64];
+    let mut sq = 0;
+    while sq < 64 {
+        let base = sq * BISHOP_STRIDE;
+        let mask = BISHOP_MASKS[sq];
+        let mut blockers = 0;
+        loop {
+            let attacks = gen_bishop_attacks_for_blockers(sq, blockers);
+            let index = pext_u64_const(blockers, mask.0) as usize;
+            table[base + index] = Bitboard(attacks);
+            blockers = (blockers.wrapping_sub(mask.0)) & mask.0;
+            if blockers == 0 {
+                break;
+            }
+        }
+        sq += 1;
+    }
+    table
+}
 
-pub static BISHOP_ATTACKS: [Bitboard; BISHOP_BLOCKER_POSSIBILITIES * 64] = gen_bishop_attacks();
+#[allow(long_running_const_eval)]
+pub static ROOK_ATTACKS: [Bitboard; ROOK_STRIDE * 64] = gen_rook_attacks();
+
+#[allow(long_running_const_eval)]
+pub static BISHOP_ATTACKS: [Bitboard; BISHOP_STRIDE * 64] = gen_bishop_attacks();
 
 #[inline(always)]
 pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     let mask = ROOK_MASKS[sq_usize];
-    let blockers = occ & mask;
-    let index =
-        (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize]) >> ROOK_SHIFTS[sq_usize]) as usize;
-    ROOK_ATTACKS[sq_usize * ROOK_BLOCKER_POSSIBILITIES + index]
+    #[cfg(not(target_feature = "bmi2"))]
+    let index = {
+        let blockers = occ & mask;
+        (blockers.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_usize]) >> ROOK_SHIFTS[sq_usize]) as usize
+    };
+    #[cfg(target_feature = "bmi2")]
+    let index = unsafe { core::arch::x86_64::_pext_u64(occ.0, mask.0) } as usize;
+    ROOK_ATTACKS[sq_usize * ROOK_STRIDE + index]
 }
 
 #[inline(always)]
 pub fn bishop_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     let mask = BISHOP_MASKS[sq_usize];
-    let blockers = occ & mask;
-    let index =
-        (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize]) >> BISHOP_SHIFTS[sq_usize]) as usize;
-    BISHOP_ATTACKS[sq_usize * BISHOP_BLOCKER_POSSIBILITIES + index]
+    #[cfg(target_feature = "bmi2")]
+    let index = unsafe { core::arch::x86_64::_pext_u64(occ.0, mask.0) } as usize;
+    #[cfg(not(target_feature = "bmi2"))]
+    let index = {
+        let blockers = occ & mask;
+        (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize]) >> BISHOP_SHIFTS[sq_usize]) as usize
+    };
+    BISHOP_ATTACKS[sq_usize * BISHOP_STRIDE + index]
 }
 
 #[allow(clippy::cast_possible_truncation)]
@@ -602,3 +660,18 @@ const fn gen_between() -> [[Bitboard; 64]; 64] {
 }
 
 pub static BETWEEN: [[Bitboard; 64]; 64] = gen_between();
+
+const fn pext_u64_const(val: u64, mask: u64) -> u64 {
+    let mut res = 0u64;
+    let mut bb = 1u64;
+    let mut m = mask;
+    while m != 0 {
+        let low = m.isolate_lowest_one();
+        if val & low != 0 {
+            res |= bb;
+        }
+        m &= m - 1;
+        bb <<= 1;
+    }
+    res
+}
