@@ -1,4 +1,4 @@
-use chess_engine::engine::{Board, GameStruct, MoveList};
+use chess_engine::engine::Board;
 use std::env;
 
 fn main() {

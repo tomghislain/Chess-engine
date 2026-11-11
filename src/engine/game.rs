@@ -58,32 +58,6 @@ impl GameStruct {
         let index = rng.random_range(0..moves.count);
         moves.get(index)
     }
-
-    pub fn perft(&mut self, depth: u8, move_lists: &mut [MoveList]) -> u64 {
-        if depth == 0 {
-            return 1;
-        }
-
-        if depth == 1 {
-            let mut count = 0;
-            self.b.feed_legal_moves(|_| {
-                count += 1;
-            });
-            return count;
-        }
-
-        let moves = &mut move_lists[depth as usize];
-        self.b.get_legal_moves_list(moves);
-        let count = moves.count;
-        let mut nodes = 0;
-        for i in 0..count {
-            let mv = move_lists[depth as usize].get(i).unwrap();
-            self.make_move(mv);
-            nodes += self.perft(depth - 1, move_lists);
-            self.unmake_move();
-        }
-        nodes
-    }
 }
 
 impl Default for GameStruct {
