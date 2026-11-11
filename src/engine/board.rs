@@ -390,7 +390,7 @@ impl Board {
         self.hash ^= z.castling[self.castling as usize];
 
         // Update halfmove clock
-        let is_pawn_move = is_double_pawn_push || matches!(moved_piece, Piece::WP | Piece::BP);
+        let is_pawn_move = matches!(moved_piece, Piece::WP | Piece::BP);
         self.halfmove_clock = if is_capture || is_pawn_move {
             0
         } else {
