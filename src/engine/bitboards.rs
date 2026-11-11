@@ -1,8 +1,5 @@
 use crate::engine::types::Bitboard;
 
-pub const ROOK_STRIDE: usize = 4096;
-pub const BISHOP_STRIDE: usize = 512;
-
 pub const FILE_A: Bitboard = Bitboard(0x01_01_01_01_01_01_01_01);
 pub const FILE_B: Bitboard = Bitboard(0x02_02_02_02_02_02_02_02);
 pub const FILE_G: Bitboard = Bitboard(0x40_40_40_40_40_40_40_40);
@@ -418,13 +415,58 @@ const fn gen_bishop_attacks_for_blockers(sq: usize, blockers: u64) -> u64 {
     attacks
 }
 
-#[cfg(not(target_feature = "bmi2"))]
-#[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
-const fn gen_rook_attacks() -> [Bitboard; ROOK_STRIDE * 64] {
-    let mut table = [Bitboard(0); ROOK_STRIDE * 64];
+const fn rook_sq_table_size(sq: usize) -> usize {
+    1 << ROOK_MASKS[sq].count_ones()
+}
+
+const fn gen_rook_offsets() -> [usize; 64] {
+    let mut offsets = [0; 64];
+    let mut acc = 0;
     let mut sq = 0;
     while sq < 64 {
-        let base = sq * ROOK_STRIDE;
+        offsets[sq] = acc;
+        acc += rook_sq_table_size(sq);
+        sq += 1;
+    }
+    offsets
+}
+
+const fn gen_rook_table_size() -> usize {
+    ROOK_OFFSETS[63] + rook_sq_table_size(63)
+}
+
+const fn bishop_sq_table_size(sq: usize) -> usize {
+    1 << BISHOP_MASKS[sq].count_ones()
+}
+
+const fn gen_bishop_offsets() -> [usize; 64] {
+    let mut offsets = [0; 64];
+    let mut acc = 0;
+    let mut sq = 0;
+    while sq < 64 {
+        offsets[sq] = acc;
+        acc += bishop_sq_table_size(sq);
+        sq += 1;
+    }
+    offsets
+}
+
+const fn gen_bishop_table_size() -> usize {
+    BISHOP_OFFSETS[63] + bishop_sq_table_size(63)
+}
+
+pub const ROOK_OFFSETS: [usize; 64] = gen_rook_offsets();
+pub const ROOK_TABLE_SIZE: usize = gen_rook_table_size();
+pub const BISHOP_OFFSETS: [usize; 64] = gen_bishop_offsets();
+pub const BISHOP_TABLE_SIZE: usize = gen_bishop_table_size();
+
+#[cfg(not(target_feature = "bmi2"))]
+#[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
+const fn gen_rook_attacks() -> [Bitboard; ROOK_TABLE_SIZE] {
+    let mut table = [Bitboard(0); ROOK_TABLE_SIZE];
+    let mut sq = 0;
+    while sq < 64 {
+        let base = ROOK_OFFSETS[sq];
         let mask = ROOK_MASKS[sq];
         let magic = ROOK_MAGIC_NUMBERS[sq];
         let shift = ROOK_SHIFTS[sq];
@@ -445,11 +487,11 @@ const fn gen_rook_attacks() -> [Bitboard; ROOK_STRIDE * 64] {
 
 #[cfg(target_feature = "bmi2")]
 #[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
-const fn gen_rook_attacks() -> [Bitboard; ROOK_STRIDE * 64] {
-    let mut table = [Bitboard(0); ROOK_STRIDE * 64];
+const fn gen_rook_attacks() -> [Bitboard; ROOK_TABLE_SIZE] {
+    let mut table = [Bitboard(0); ROOK_TABLE_SIZE];
     let mut sq = 0;
     while sq < 64 {
-        let base = sq * ROOK_STRIDE;
+        let base = ROOK_OFFSETS[sq];
         let mask = ROOK_MASKS[sq];
         let mut blockers = 0;
         loop {
@@ -468,11 +510,11 @@ const fn gen_rook_attacks() -> [Bitboard; ROOK_STRIDE * 64] {
 
 #[cfg(not(target_feature = "bmi2"))]
 #[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
-const fn gen_bishop_attacks() -> [Bitboard; BISHOP_STRIDE * 64] {
-    let mut table = [Bitboard(0); BISHOP_STRIDE * 64];
+const fn gen_bishop_attacks() -> [Bitboard; BISHOP_TABLE_SIZE] {
+    let mut table = [Bitboard(0); BISHOP_TABLE_SIZE];
     let mut sq = 0;
     while sq < 64 {
-        let base = sq * BISHOP_STRIDE;
+        let base = BISHOP_OFFSETS[sq];
         let mask = BISHOP_MASKS[sq];
         let magic = BISHOP_MAGIC_NUMBERS[sq];
         let shift = BISHOP_SHIFTS[sq];
@@ -493,11 +535,11 @@ const fn gen_bishop_attacks() -> [Bitboard; BISHOP_STRIDE * 64] {
 
 #[cfg(target_feature = "bmi2")]
 #[allow(clippy::large_stack_frames, clippy::large_stack_arrays)]
-const fn gen_bishop_attacks() -> [Bitboard; BISHOP_STRIDE * 64] {
-    let mut table = [Bitboard(0); BISHOP_STRIDE * 64];
+const fn gen_bishop_attacks() -> [Bitboard; BISHOP_TABLE_SIZE] {
+    let mut table = [Bitboard(0); BISHOP_TABLE_SIZE];
     let mut sq = 0;
     while sq < 64 {
-        let base = sq * BISHOP_STRIDE;
+        let base = BISHOP_OFFSETS[sq];
         let mask = BISHOP_MASKS[sq];
         let mut blockers = 0;
         loop {
@@ -515,10 +557,10 @@ const fn gen_bishop_attacks() -> [Bitboard; BISHOP_STRIDE * 64] {
 }
 
 #[allow(long_running_const_eval)]
-pub static ROOK_ATTACKS: [Bitboard; ROOK_STRIDE * 64] = gen_rook_attacks();
+pub static ROOK_ATTACKS: [Bitboard; ROOK_TABLE_SIZE] = gen_rook_attacks();
 
 #[allow(long_running_const_eval)]
-pub static BISHOP_ATTACKS: [Bitboard; BISHOP_STRIDE * 64] = gen_bishop_attacks();
+pub static BISHOP_ATTACKS: [Bitboard; BISHOP_TABLE_SIZE] = gen_bishop_attacks();
 
 #[inline(always)]
 pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
@@ -530,7 +572,7 @@ pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     };
     #[cfg(target_feature = "bmi2")]
     let index = unsafe { core::arch::x86_64::_pext_u64(occ.0, mask.0) } as usize;
-    ROOK_ATTACKS[sq_usize * ROOK_STRIDE + index]
+    ROOK_ATTACKS[ROOK_OFFSETS[sq_usize] + index]
 }
 
 #[inline(always)]
@@ -543,12 +585,14 @@ pub fn bishop_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
         let blockers = occ & mask;
         (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize]) >> BISHOP_SHIFTS[sq_usize]) as usize
     };
-    BISHOP_ATTACKS[sq_usize * BISHOP_STRIDE + index]
+    BISHOP_ATTACKS[BISHOP_OFFSETS[sq_usize] + index]
 }
 
-#[allow(clippy::cast_possible_truncation)]
-#[allow(clippy::cast_possible_wrap)]
-#[allow(clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap
+)]
 const fn gen_king_attacks() -> [Bitboard; 64] {
     let mut table = [Bitboard(0); 64];
 
@@ -618,8 +662,7 @@ const fn direction(from_i: i32, to_i: i32) -> i32 {
     }
 }
 
-#[allow(clippy::cast_possible_truncation)]
-#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
 const fn between_mask(from: usize, to: usize) -> Bitboard {
     #[allow(clippy::cast_possible_wrap)]
     let from_i = from as i32;
