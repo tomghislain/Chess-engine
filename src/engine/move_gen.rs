@@ -398,7 +398,7 @@ impl Board {
                 self.pieces[Piece::WK as usize],
             ),
         };
-        let kingless_occ = self.occ & !Bitboard::from(king_sq);
+        let kingless_occ = self.occ ^ Bitboard::from(king_sq);
         danger |= pawn_attacks;
         for sq in knights {
             danger |= KNIGHT_ATTACKS[sq.as_usize()];

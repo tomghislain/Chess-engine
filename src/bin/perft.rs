@@ -17,13 +17,6 @@ fn main() {
     println!("FEN: {fen}");
     println!("Depth: {depth}");
 
-    // GameStruct with undo_stack
-    let mut game = GameStruct::from_fen(fen);
-    let mut move_lists = vec![MoveList::new(); depth as usize + 1];
-    let start = std::time::Instant::now();
-    println!("Number of moves : {}", game.perft(depth, &mut move_lists));
-    println!("Time taken: {:?}", start.elapsed());
-
     // Board only
     let mcts_board = Board::from_fen(fen);
     let start = std::time::Instant::now();
