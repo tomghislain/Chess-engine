@@ -17,12 +17,9 @@ fn main() {
     println!("FEN: {fen}");
     println!("Depth: {depth}");
 
-    // Board only
-    let mcts_board = Board::from_fen(fen);
+    // Copy only
+    let board = Board::from_fen(fen);
     let start = std::time::Instant::now();
-    println!(
-        "Number of moves at depth (copy-only) :{}",
-        mcts_board.perft(depth)
-    );
+    println!("Number of moves at depth :{}", board.perft(depth));
     println!("Time taken: {:?}", start.elapsed());
 }
