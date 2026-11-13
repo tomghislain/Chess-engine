@@ -41,14 +41,16 @@ impl Board {
             pawns & !RANK_2
         };
 
+        let push_targets = empty & move_mask;
+
         // Non-promotions
         let free_pawns = non_promotion_pawns & !pinned;
         let pinned_pawns = non_promotion_pawns & pinned;
         // Free
         let single_push = if IS_WHITE {
-            (free_pawns << 8) & empty & move_mask
+            (free_pawns << 8) & push_targets
         } else {
-            (free_pawns >> 8) & empty & move_mask
+            (free_pawns >> 8) & push_targets
         };
         for to in single_push {
             let from = if IS_WHITE {
@@ -59,9 +61,9 @@ impl Board {
             f(Move::new(from, to, Piece::None, 0));
         }
         let double_push = if IS_WHITE {
-            ((((free_pawns & RANK_2) << 8) & empty) << 8) & empty & move_mask
+            ((((free_pawns & RANK_2) << 8) & empty) << 8) & push_targets
         } else {
-            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & empty & move_mask
+            ((((free_pawns & RANK_7) >> 8) & empty) >> 8) & push_targets
         };
         for to in double_push {
             let from = if IS_WHITE {
@@ -77,10 +79,12 @@ impl Board {
             self.color_occ[Color::White as usize]
         };
 
+        let capture_targets = enemy_occ & move_mask;
+
         let left_captures = if IS_WHITE {
-            (free_pawns << 7) & !FILE_H & enemy_occ & move_mask
+            (free_pawns << 7) & !FILE_H & capture_targets
         } else {
-            (free_pawns >> 7) & !FILE_A & enemy_occ & move_mask
+            (free_pawns >> 7) & !FILE_A & capture_targets
         };
         for to in left_captures {
             let from = if IS_WHITE {
@@ -92,9 +96,9 @@ impl Board {
         }
 
         let right_captures = if IS_WHITE {
-            (free_pawns << 9) & !FILE_A & enemy_occ & move_mask
+            (free_pawns << 9) & !FILE_A & capture_targets
         } else {
-            (free_pawns >> 9) & !FILE_H & enemy_occ & move_mask
+            (free_pawns >> 9) & !FILE_H & capture_targets
         };
         for to in right_captures {
             let from = if IS_WHITE {
@@ -109,17 +113,17 @@ impl Board {
             let ray = pin_rays[from.as_usize()];
             let from_bb = Bitboard::from(from);
             let single_push = if IS_WHITE {
-                (from_bb << 8) & empty & move_mask & ray
+                (from_bb << 8) & push_targets & ray
             } else {
-                (from_bb >> 8) & empty & move_mask & ray
+                (from_bb >> 8) & push_targets & ray
             };
             for to in single_push {
                 f(Move::new(from, to, Piece::None, 0));
             }
             let double_push = if IS_WHITE {
-                ((((from_bb & RANK_2) << 8) & empty) << 8) & empty & move_mask & ray
+                ((((from_bb & RANK_2) << 8) & empty) << 8) & push_targets & ray
             } else {
-                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & empty & move_mask & ray
+                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & push_targets & ray
             };
             for to in double_push {
                 f(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
@@ -145,9 +149,9 @@ impl Board {
         let pinned_pawns = promotion_pawns & pinned;
         // Free
         let single_push = if IS_WHITE {
-            (free_pawns << 8) & empty & move_mask
+            (free_pawns << 8) & push_targets
         } else {
-            (free_pawns >> 8) & empty & move_mask
+            (free_pawns >> 8) & push_targets
         };
         for to in single_push {
             let from = if IS_WHITE {
@@ -160,9 +164,9 @@ impl Board {
             }
         }
         let left_captures = if IS_WHITE {
-            (free_pawns << 7) & !FILE_H & enemy_occ & move_mask
+            (free_pawns << 7) & !FILE_H & capture_targets
         } else {
-            (free_pawns >> 7) & !FILE_A & enemy_occ & move_mask
+            (free_pawns >> 7) & !FILE_A & capture_targets
         };
         for to in left_captures {
             let from = if IS_WHITE {
@@ -176,9 +180,9 @@ impl Board {
         }
 
         let right_captures = if IS_WHITE {
-            (free_pawns << 9) & !FILE_A & enemy_occ & move_mask
+            (free_pawns << 9) & !FILE_A & capture_targets
         } else {
-            (free_pawns >> 9) & !FILE_H & enemy_occ & move_mask
+            (free_pawns >> 9) & !FILE_H & capture_targets
         };
         for to in right_captures {
             let from = if IS_WHITE {
@@ -512,7 +516,7 @@ impl Board {
         }
     }
 
-    fn gen_castling_moves(&self, f: &mut impl FnMut(Move), king_danger_squares: Bitboard) {
+    fn get_castling_moves(&self, f: &mut impl FnMut(Move), king_danger_squares: Bitboard) {
         let castling_rights = self.castling;
         match self.side_to_move {
             Color::White => {
@@ -655,7 +659,7 @@ impl Board {
             // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
             self.compute_block_mask(king_sq, checkers) | checkers
         } else {
-            self.gen_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
+            self.get_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };
 
