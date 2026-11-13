@@ -652,9 +652,9 @@ impl Board {
             if checkers.count_ones() > 1 {
                 return; // If it is a double check, only king moves can be legal
             }
+            // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
             self.compute_block_mask(king_sq, checkers) | checkers
         } else {
-            // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
             self.gen_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         };

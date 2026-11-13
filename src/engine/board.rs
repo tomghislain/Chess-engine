@@ -573,14 +573,6 @@ impl Board {
         }
     }
 
-    pub fn count_legal_moves(&self) -> usize {
-        let mut count = 0;
-        self.feed_legal_moves(|_| {
-            count += 1;
-        });
-        count
-    }
-
     pub fn has_legal_moves(&self) -> bool {
         self.count_legal_moves() != 0
     }
@@ -591,9 +583,7 @@ impl Board {
         }
 
         if depth == 1 {
-            let mut count = 0;
-            self.feed_legal_moves(|_| count += 1);
-            return count;
+            return self.count_legal_moves();
         }
 
         let mut nodes = 0;
