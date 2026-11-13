@@ -646,7 +646,7 @@ impl Board {
 
         self.get_king_moves(&mut f, king_sq, king_danger_mask);
 
-        let block_mask = if in_check {
+        let move_mask = if in_check {
             let checkers: Bitboard = self.compute_checkers(king_sq); // Bitmap of pieces that put the king in check
 
             if checkers.count_ones() > 1 {
@@ -663,7 +663,7 @@ impl Board {
         // pin_rays: list of bitmaps for each square a piece could be on, that show where that piece can move without puting the king in check
         let (pinned, pin_rays) = self.compute_pins(king_sq);
 
-        self.get_non_king_moves(&mut f, block_mask, pinned, &pin_rays, king_sq);
+        self.get_non_king_moves(&mut f, move_mask, pinned, &pin_rays, king_sq);
     }
 
     pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
