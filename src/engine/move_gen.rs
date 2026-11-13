@@ -642,27 +642,28 @@ impl Board {
 
         let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
 
-        self.get_king_moves(&mut f, king_sq, king_danger_mask);
-        let checkers: Bitboard = self.compute_checkers(king_sq); // Bitmap of pieces that put the king in check
+        let in_check = !(king_danger_mask & Bitboard::from(king_sq)).is_empty();
 
-        if checkers.count_ones() > 1 {
-            return; // If it is a double check, only king moves can be legal
-        }
+        self.get_king_moves(&mut f, king_sq, king_danger_mask);
+
+        let block_mask = if in_check {
+            let checkers: Bitboard = self.compute_checkers(king_sq); // Bitmap of pieces that put the king in check
+
+            if checkers.count_ones() > 1 {
+                return; // If it is a double check, only king moves can be legal
+            }
+            self.compute_block_mask(king_sq, checkers) | checkers
+        } else {
+            // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
+            self.gen_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
+            !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
+        };
 
         // pinned: bitmap of pieces that cannot move because they would put the king in check
         // pin_rays: list of bitmaps for each square a piece could be on, that show where that piece can move without puting the king in check
         let (pinned, pin_rays) = self.compute_pins(king_sq);
 
-        let in_check = !checkers.is_empty();
-        // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
-        let move_mask = if in_check {
-            self.compute_block_mask(king_sq, checkers) | checkers
-        } else {
-            self.gen_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
-            !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
-        };
-
-        self.get_non_king_moves(&mut f, move_mask, pinned, &pin_rays, king_sq);
+        self.get_non_king_moves(&mut f, block_mask, pinned, &pin_rays, king_sq);
     }
 
     pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
