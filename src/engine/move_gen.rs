@@ -19,6 +19,18 @@ struct PinInfo {
     pinned_diag: Bitboard,
 }
 
+const WK_EMPTY: Bitboard = Bitboard((1 << 5) | (1 << 6));
+const WQ_EMPTY: Bitboard = Bitboard((1 << 1) | (1 << 2) | (1 << 3));
+
+const WK_SAFE: Bitboard = Bitboard((1 << 5) | (1 << 6));
+const WQ_SAFE: Bitboard = Bitboard((1 << 3) | (1 << 2));
+
+const BK_EMPTY: Bitboard = Bitboard((1 << 61) | (1 << 62));
+const BQ_EMPTY: Bitboard = Bitboard((1 << 57) | (1 << 58) | (1 << 59));
+
+const BK_SAFE: Bitboard = Bitboard((1 << 61) | (1 << 62));
+const BQ_SAFE: Bitboard = Bitboard((1 << 59) | (1 << 58));
+
 impl Board {
     #[allow(clippy::too_many_lines)]
     #[inline(always)]
@@ -568,28 +580,21 @@ impl Board {
     ) {
         if IS_WHITE {
             if KING_SIDE
-                && (self.occ & (Bitboard::from(Square(5)) | Bitboard::from(Square(6)))).is_empty()
-                && (king_danger_squares & (Bitboard::from(Square(5)) | Bitboard::from(Square(6))))
-                    .is_empty()
+                && (self.occ & WK_EMPTY).is_empty()
+                && (king_danger_squares & WK_SAFE).is_empty()
             {
                 f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
             }
             if QUEEN_SIDE
-                && (self.occ
-                    & (Bitboard::from(Square(1))
-                        | Bitboard::from(Square(2))
-                        | Bitboard::from(Square(3))))
-                .is_empty()
-                && (king_danger_squares & (Bitboard::from(Square(3)) | Bitboard::from(Square(2))))
-                    .is_empty()
+                && (self.occ & WQ_EMPTY).is_empty()
+                && (king_danger_squares & WQ_SAFE).is_empty()
             {
                 f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
             }
         } else {
             if KING_SIDE
-                && (self.occ & (Bitboard::from(Square(61)) | Bitboard::from(Square(62)))).is_empty()
-                && (king_danger_squares & (Bitboard::from(Square(61)) | Bitboard::from(Square(62))))
-                    .is_empty()
+                && (self.occ & BK_EMPTY).is_empty()
+                && (king_danger_squares & BK_SAFE).is_empty()
             {
                 f(Move::new(
                     Square(60),
@@ -599,13 +604,8 @@ impl Board {
                 ));
             }
             if QUEEN_SIDE
-                && (self.occ
-                    & (Bitboard::from(Square(57))
-                        | Bitboard::from(Square(58))
-                        | Bitboard::from(Square(59))))
-                .is_empty()
-                && (king_danger_squares & (Bitboard::from(Square(59)) | Bitboard::from(Square(58))))
-                    .is_empty()
+                && (self.occ & BQ_EMPTY).is_empty()
+                && (king_danger_squares & BQ_SAFE).is_empty()
             {
                 f(Move::new(
                     Square(60),
