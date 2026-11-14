@@ -561,45 +561,35 @@ impl Board {
     }
 
     #[inline(always)]
-    fn get_castling_moves<const IS_WHITE: bool>(
+    fn get_castling_moves<const IS_WHITE: bool, const KING_SIDE: bool, const QUEEN_SIDE: bool>(
         &self,
         f: &mut impl FnMut(Move),
         king_danger_squares: Bitboard,
     ) {
-        let castling_rights = self.castling;
         if IS_WHITE {
-            if castling_rights & WK_CASTLE != 0
+            if KING_SIDE
                 && (self.occ & (Bitboard::from(Square(5)) | Bitboard::from(Square(6)))).is_empty()
-                && (king_danger_squares
-                    & (Bitboard::from(Square(4))
-                        | Bitboard::from(Square(5))
-                        | Bitboard::from(Square(6))))
-                .is_empty()
+                && (king_danger_squares & (Bitboard::from(Square(5)) | Bitboard::from(Square(6))))
+                    .is_empty()
             {
                 f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
             }
-            if castling_rights & WQ_CASTLE != 0
+            if QUEEN_SIDE
                 && (self.occ
                     & (Bitboard::from(Square(1))
                         | Bitboard::from(Square(2))
                         | Bitboard::from(Square(3))))
                 .is_empty()
-                && (king_danger_squares
-                    & (Bitboard::from(Square(4))
-                        | Bitboard::from(Square(3))
-                        | Bitboard::from(Square(2))))
-                .is_empty()
+                && (king_danger_squares & (Bitboard::from(Square(3)) | Bitboard::from(Square(2))))
+                    .is_empty()
             {
                 f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
             }
         } else {
-            if castling_rights & BK_CASTLE != 0
+            if KING_SIDE
                 && (self.occ & (Bitboard::from(Square(61)) | Bitboard::from(Square(62)))).is_empty()
-                && (king_danger_squares
-                    & (Bitboard::from(Square(60))
-                        | Bitboard::from(Square(61))
-                        | Bitboard::from(Square(62))))
-                .is_empty()
+                && (king_danger_squares & (Bitboard::from(Square(61)) | Bitboard::from(Square(62))))
+                    .is_empty()
             {
                 f(Move::new(
                     Square(60),
@@ -608,17 +598,14 @@ impl Board {
                     CASTLING_FLAG,
                 ));
             }
-            if castling_rights & BQ_CASTLE != 0
+            if QUEEN_SIDE
                 && (self.occ
                     & (Bitboard::from(Square(57))
                         | Bitboard::from(Square(58))
                         | Bitboard::from(Square(59))))
                 .is_empty()
-                && (king_danger_squares
-                    & (Bitboard::from(Square(60))
-                        | Bitboard::from(Square(59))
-                        | Bitboard::from(Square(58))))
-                .is_empty()
+                && (king_danger_squares & (Bitboard::from(Square(59)) | Bitboard::from(Square(58))))
+                    .is_empty()
             {
                 f(Move::new(
                     Square(60),
@@ -704,7 +691,23 @@ impl Board {
             // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
             self.compute_block_mask(king_sq, checkers) | checkers
         } else {
-            self.get_castling_moves::<IS_WHITE>(&mut f, king_danger_mask); // Castling moves can only happen when not in check
+            // Dispatch castling according to rights and color
+            let king_side = if IS_WHITE { WK_CASTLE } else { BK_CASTLE };
+            let queen_side = if IS_WHITE { WQ_CASTLE } else { BQ_CASTLE };
+
+            let rights = self.castling & (king_side | queen_side);
+
+            match rights {
+                0 => (),
+                r if r == king_side => {
+                    self.get_castling_moves::<IS_WHITE, true, false>(&mut f, king_danger_mask)
+                }
+                r if r == queen_side => {
+                    self.get_castling_moves::<IS_WHITE, false, true>(&mut f, king_danger_mask)
+                }
+                _ => self.get_castling_moves::<IS_WHITE, true, true>(&mut f, king_danger_mask),
+            }
+
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         } & !us;
 
