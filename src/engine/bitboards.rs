@@ -564,6 +564,7 @@ pub static BISHOP_ATTACKS: [Bitboard; BISHOP_TABLE_SIZE] = gen_bishop_attacks();
 
 #[inline(always)]
 pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
+    debug_assert!(sq_usize < 64);
     let mask = ROOK_MASKS[sq_usize];
     #[cfg(not(target_feature = "bmi2"))]
     let index = {
@@ -572,12 +573,14 @@ pub fn rook_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
     };
     #[cfg(target_feature = "bmi2")]
     let index = unsafe { core::arch::x86_64::_pext_u64(occ.0, mask.0) } as usize;
-    ROOK_ATTACKS[ROOK_OFFSETS[sq_usize] + index]
+    debug_assert!(ROOK_OFFSETS[sq_usize] + index < ROOK_TABLE_SIZE);
+    unsafe { *ROOK_ATTACKS.get_unchecked(ROOK_OFFSETS.get_unchecked(sq_usize) + index) }
 }
 
 #[inline(always)]
 pub fn bishop_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
-    let mask = BISHOP_MASKS[sq_usize];
+    debug_assert!(sq_usize < 64);
+    let mask = unsafe { *BISHOP_MASKS.get_unchecked(sq_usize) };
     #[cfg(target_feature = "bmi2")]
     let index = unsafe { core::arch::x86_64::_pext_u64(occ.0, mask.0) } as usize;
     #[cfg(not(target_feature = "bmi2"))]
@@ -585,7 +588,8 @@ pub fn bishop_attacks(sq_usize: usize, occ: Bitboard) -> Bitboard {
         let blockers = occ & mask;
         (blockers.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_usize]) >> BISHOP_SHIFTS[sq_usize]) as usize
     };
-    BISHOP_ATTACKS[BISHOP_OFFSETS[sq_usize] + index]
+    debug_assert!(BISHOP_OFFSETS[sq_usize] + index < BISHOP_TABLE_SIZE);
+    unsafe { *BISHOP_ATTACKS.get_unchecked(BISHOP_OFFSETS.get_unchecked(sq_usize) + index) }
 }
 
 #[allow(
