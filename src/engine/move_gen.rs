@@ -586,7 +586,7 @@ impl Board {
         }
     }
 
-    fn get_non_king_moves(
+    fn get_non_king_moves<const IS_WHITE: bool>(
         &self,
         f: &mut impl FnMut(Move),
         move_mask: Bitboard,
@@ -594,34 +594,26 @@ impl Board {
         pin_rays: &[Bitboard; 64],
         king_sq: Square,
     ) {
-        match self.side_to_move {
-            Color::White => {
-                let (knights, rooks, bishops, queens) = (
-                    self.pieces[Piece::WN as usize],
-                    self.pieces[Piece::WR as usize],
-                    self.pieces[Piece::WB as usize],
-                    self.pieces[Piece::WQ as usize],
-                );
-                self.get_pawn_moves::<true>(f, move_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(f, knights, move_mask, pinned);
-                self.get_sliding_moves::<true, false>(f, rooks, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<false, true>(f, bishops, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<true, true>(f, queens, move_mask, pinned, pin_rays);
-            }
-            Color::Black => {
-                let (knights, rooks, bishops, queens) = (
-                    self.pieces[Piece::BN as usize],
-                    self.pieces[Piece::BR as usize],
-                    self.pieces[Piece::BB as usize],
-                    self.pieces[Piece::BQ as usize],
-                );
-                self.get_pawn_moves::<false>(f, move_mask, pinned, pin_rays, king_sq);
-                self.get_knight_moves(f, knights, move_mask, pinned);
-                self.get_sliding_moves::<true, false>(f, rooks, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<false, true>(f, bishops, move_mask, pinned, pin_rays);
-                self.get_sliding_moves::<true, true>(f, queens, move_mask, pinned, pin_rays);
-            }
-        }
+        let (knights, rooks, bishops, queens) = if IS_WHITE {
+            (
+                self.pieces[Piece::WN as usize],
+                self.pieces[Piece::WR as usize],
+                self.pieces[Piece::WB as usize],
+                self.pieces[Piece::WQ as usize],
+            )
+        } else {
+            (
+                self.pieces[Piece::BN as usize],
+                self.pieces[Piece::BR as usize],
+                self.pieces[Piece::BB as usize],
+                self.pieces[Piece::BQ as usize],
+            )
+        };
+        self.get_pawn_moves::<IS_WHITE>(f, move_mask, pinned, pin_rays, king_sq);
+        self.get_knight_moves(f, knights, move_mask, pinned);
+        self.get_sliding_moves::<true, false>(f, rooks, move_mask, pinned, pin_rays);
+        self.get_sliding_moves::<false, true>(f, bishops, move_mask, pinned, pin_rays);
+        self.get_sliding_moves::<true, true>(f, queens, move_mask, pinned, pin_rays);
     }
 
     pub fn get_legal_moves_list(&self, moves: &mut MoveList) {
@@ -632,10 +624,8 @@ impl Board {
     }
 
     pub fn feed_legal_moves(&self, mut f: impl FnMut(Move)) {
-        let side_to_move = self.side_to_move;
-
         let king_sq = Square(
-            self.pieces[if side_to_move == Color::White {
+            self.pieces[if self.side_to_move == Color::White {
                 Piece::WK
             } else {
                 Piece::BK
@@ -667,7 +657,14 @@ impl Board {
         // pin_rays: list of bitmaps for each square a piece could be on, that show where that piece can move without puting the king in check
         let (pinned, pin_rays) = self.compute_pins(king_sq);
 
-        self.get_non_king_moves(&mut f, move_mask, pinned, &pin_rays, king_sq);
+        match self.side_to_move {
+            Color::White => {
+                self.get_non_king_moves::<true>(&mut f, move_mask, pinned, &pin_rays, king_sq)
+            }
+            Color::Black => {
+                self.get_non_king_moves::<false>(&mut f, move_mask, pinned, &pin_rays, king_sq)
+            }
+        }
     }
 
     pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
