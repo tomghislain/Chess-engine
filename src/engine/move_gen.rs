@@ -310,13 +310,10 @@ impl Board {
         move_mask: Bitboard,
         pinned: Bitboard,
     ) {
-        let side_to_move = self.side_to_move;
         let free_knights = knights & !pinned;
         let occ = self.occ.0;
         for from in free_knights {
-            let attacks = KNIGHT_ATTACKS[from.as_usize()]
-                & !self.color_occ[side_to_move as usize]
-                & move_mask;
+            let attacks = KNIGHT_ATTACKS[from.as_usize()] & move_mask;
 
             for to in attacks {
                 let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -337,7 +334,6 @@ impl Board {
     ) {
         let free_pieces = pieces & !pinned;
         let pinned_pieces = pieces & pinned;
-        let base_mask = !self.color_occ[self.side_to_move as usize] & move_mask;
         let occ = self.occ.0;
         for from in free_pieces {
             let mut attacks = Bitboard(0);
@@ -347,7 +343,7 @@ impl Board {
             if IS_BISHOP {
                 attacks |= bishop_attacks(from.as_usize(), self.occ);
             }
-            attacks &= base_mask;
+            attacks &= move_mask;
 
             for to in attacks {
                 let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -362,7 +358,7 @@ impl Board {
             if IS_BISHOP {
                 attacks |= bishop_attacks(from.as_usize(), self.occ);
             }
-            attacks &= base_mask & pin_rays[from.as_usize()];
+            attacks &= move_mask & pin_rays[from.as_usize()];
 
             for to in attacks {
                 let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -650,7 +646,7 @@ impl Board {
         } else {
             self.get_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
-        };
+        } & !self.color_occ[self.side_to_move as usize];
 
         // pinned: bitmap of pieces that cannot move because they would put the king in check
         // pin_rays: list of bitmaps for each square a piece could be on, that show where that piece can move without puting the king in check
