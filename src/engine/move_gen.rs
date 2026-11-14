@@ -11,6 +11,7 @@ use crate::engine::types::{
 
 impl Board {
     #[allow(clippy::too_many_lines)]
+    #[inline(always)]
     fn get_pawn_moves<const IS_WHITE: bool>(
         &self,
         f: &mut impl FnMut(Move),
@@ -254,6 +255,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     fn would_en_passant_check(
         &self,
         sq: Square,
@@ -300,6 +302,7 @@ impl Board {
         false
     }
 
+    #[inline(always)]
     fn get_knight_moves(
         &self,
         f: &mut impl FnMut(Move),
@@ -323,6 +326,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     fn get_sliding_moves<const IS_ROOK: bool, const IS_BISHOP: bool>(
         &self,
         f: &mut impl FnMut(Move),
@@ -367,6 +371,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     fn compute_danger(&self, king_sq: Square) -> Bitboard {
         let mut danger = Bitboard(0);
         let (pawn_attacks, knights, orth_pieces, diag_pieces, enemy_king) = match self.side_to_move
@@ -408,6 +413,7 @@ impl Board {
         danger
     }
 
+    #[inline(always)]
     fn get_king_moves(&self, f: &mut impl FnMut(Move), king_sq: Square, danger_mask: Bitboard) {
         let side_to_move = self.side_to_move;
         let attacks = KING_ATTACKS[king_sq.as_usize()]
@@ -421,6 +427,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     pub fn compute_checkers(&self, king_sq: Square) -> Bitboard {
         let mut checkers = Bitboard(0);
         let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) =
@@ -455,6 +462,7 @@ impl Board {
         checkers
     }
 
+    #[inline(always)]
     fn compute_pins(&self, king_sq: Square) -> (Bitboard, [Bitboard; 64]) {
         let mut pinned = Bitboard(0);
         let mut pin_rays = [Bitboard(0); 64];
@@ -491,6 +499,7 @@ impl Board {
         (pinned, pin_rays)
     }
 
+    #[inline(always)]
     fn compute_block_mask(&self, king_sq: Square, checkers: Bitboard) -> Bitboard {
         let checker_sq = Square(checkers.trailing_zeros());
         let checker_piece = self.piece_at(checker_sq);
@@ -503,6 +512,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     fn get_castling_moves(&self, f: &mut impl FnMut(Move), king_danger_squares: Bitboard) {
         let castling_rights = self.castling;
         match self.side_to_move {
@@ -573,6 +583,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     fn get_non_king_moves<const IS_WHITE: bool>(
         &self,
         f: &mut impl FnMut(Move),
@@ -610,6 +621,7 @@ impl Board {
         });
     }
 
+    #[inline(always)]
     pub fn feed_legal_moves(&self, mut f: impl FnMut(Move)) {
         let king_sq = Square(
             self.pieces[if self.side_to_move == Color::White {

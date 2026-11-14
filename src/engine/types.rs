@@ -71,6 +71,7 @@ pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 4;
 pub struct Move(u32);
 
 impl Move {
+    #[inline(always)]
     pub fn new(from: Square, to: Square, promotion_piece: Piece, flags: u8) -> Self {
         Self(
             from.as_u32() // 6 bits
@@ -80,14 +81,17 @@ impl Move {
         )
     }
 
+    #[inline(always)]
     pub const fn from(self) -> Square {
         Square((self.0 & 0b111_111) as u8)
     }
 
+    #[inline(always)]
     pub const fn to(self) -> Square {
         Square(((self.0 >> 6) & 0b111_111) as u8)
     }
 
+    #[inline(always)]
     pub const fn promotion(self) -> Piece {
         let index = ((self.0 >> 12) & 0b1111) as usize;
         if index < 12 {
@@ -97,6 +101,7 @@ impl Move {
         }
     }
 
+    #[inline(always)]
     pub const fn flags(self) -> u8 {
         ((self.0 >> 16) & 0b11111) as u8
     }
@@ -183,29 +188,32 @@ impl Default for MoveList {
 pub struct Bitboard(pub u64);
 
 impl Bitboard {
-    #[allow(clippy::cast_possible_truncation)]
+    #[inline(always)]
     pub const fn pop_lsb(&mut self) -> u8 {
         let index = self.0.trailing_zeros() as u8;
         self.0 &= self.0 - 1;
         index
     }
-    #[allow(clippy::cast_possible_truncation)]
+    #[inline(always)]
     pub const fn count_ones(self) -> u8 {
         self.0.count_ones() as u8
     }
-    #[allow(clippy::cast_possible_truncation)]
+    #[inline(always)]
     pub const fn trailing_zeros(self) -> u8 {
         self.0.trailing_zeros() as u8
     }
+    #[inline(always)]
     pub const fn is_empty(self) -> bool {
         self.0 == 0
     }
+    #[inline(always)]
     pub const fn wrapping_mul(self, rhs: u64) -> u64 {
         self.0.wrapping_mul(rhs)
     }
 }
 
 impl From<Square> for Bitboard {
+    #[inline(always)]
     fn from(sq: Square) -> Self {
         Self(1 << sq.0)
     }

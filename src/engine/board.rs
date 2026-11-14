@@ -256,6 +256,7 @@ impl Board {
         b
     }
 
+    #[inline(always)]
     pub const fn piece_at(&self, sq: Square) -> Piece {
         self.mailbox[sq.as_usize()]
     }
@@ -573,6 +574,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     pub fn count_legal_moves(&self) -> u64 {
         let mut count = 0;
         self.feed_legal_moves(|_| count += 1);
