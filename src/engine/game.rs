@@ -50,7 +50,7 @@ impl GameStruct {
     }
 
     pub fn get_random_move(&self, rng: &mut SmallRng) -> Option<Move> {
-        let mut moves = MoveList::new();
+        let mut moves = MoveList::default();
         self.b.get_legal_moves_list(&mut moves);
         if moves.count == 0 || self.is_draw() {
             return None;

@@ -58,7 +58,7 @@ struct Node {
 
 impl Node {
     fn new(game: &MctsGame, parent: Option<NodeIndex>, parent_move: Option<Move>) -> Self {
-        let mut moves = MoveList::new();
+        let mut moves = MoveList::default();
         if !game.is_draw() {
             game.b.get_legal_moves_list(&mut moves);
         }
@@ -176,7 +176,7 @@ pub fn mcts_search(
     rng: &mut SmallRng,
 ) -> Option<Move> {
     let mcts_board = MctsGame::from_fullgame(fullgame);
-    let mut moves = MoveList::new();
+    let mut moves = MoveList::default();
     mcts_board.b.get_legal_moves_list(&mut moves);
     if fullgame.is_draw() || moves.count == 0 {
         return None;
@@ -186,7 +186,7 @@ pub fn mcts_search(
     let mut tree = Tree::new(&mcts_board);
     // Iterate over the tree
     for _ in 0..iteration_number {
-        let mut iteration_board = mcts_board.clone();
+        let mut iteration_board = mcts_board;
         let selected_node = tree.select(&mut iteration_board);
         let new_node = tree.expand(&mut iteration_board, selected_node, rng);
         let score = Tree::rollout(&mut iteration_board, &mut moves, rng);

@@ -67,14 +67,8 @@ pub const EN_PASSANT_FLAG: u8 = 1 << 2;
 pub const CASTLING_FLAG: u8 = 1 << 3;
 pub const DOUBLE_PAWN_PUSH_FLAG: u8 = 1 << 4;
 
-#[derive(Copy, PartialEq, Eq, Clone, Debug)]
+#[derive(Copy, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Move(u32);
-
-impl Default for Move {
-    fn default() -> Self {
-        Self(0)
-    }
-}
 
 impl Move {
     pub fn new(from: Square, to: Square, promotion_piece: Piece, flags: u8) -> Self {
@@ -135,7 +129,7 @@ pub struct MoveList {
 
 impl FromIterator<Move> for MoveList {
     fn from_iter<T: IntoIterator<Item = Move>>(iter: T) -> Self {
-        let mut list = Self::new();
+        let mut list = Self::default();
         for mv in iter {
             if list.count < 218 {
                 list.push(mv);
@@ -148,12 +142,6 @@ impl FromIterator<Move> for MoveList {
 }
 
 impl MoveList {
-    pub fn new() -> Self {
-        Self {
-            moves: [Move::new(Square(0), Square(0), Piece::None, 0); 218],
-            count: 0,
-        }
-    }
     pub const fn get(&self, index: usize) -> Option<Move> {
         if index < self.count {
             Some(self.moves[index])
@@ -179,6 +167,15 @@ impl MoveList {
     }
     pub fn iter(&self) -> std::slice::Iter<'_, Move> {
         self.moves[..self.count].iter()
+    }
+}
+
+impl Default for MoveList {
+    fn default() -> Self {
+        Self {
+            moves: [Move::new(Square(0), Square(0), Piece::None, 0); 218],
+            count: 0,
+        }
     }
 }
 

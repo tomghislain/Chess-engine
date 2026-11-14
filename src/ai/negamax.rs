@@ -49,7 +49,7 @@ fn negamax(
         return game.b.material_evaluation();
     }
 
-    let mut moves = MoveList::new();
+    let mut moves = MoveList::default();
     game.b.get_legal_moves_list(&mut moves);
     if moves.count == 0 {
         if game.b.is_king_checked() {
@@ -104,7 +104,7 @@ pub fn search_root(game: &mut GameStruct, depth: u8) -> Option<Move> {
     let mut best_score = isize::MIN;
     let mut best_move = None;
 
-    let mut moves = MoveList::new();
+    let mut moves = MoveList::default();
     game.b.get_legal_moves_list(&mut moves);
     for mv in moves.iter() {
         game.make_move(*mv);

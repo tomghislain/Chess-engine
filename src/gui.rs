@@ -159,9 +159,9 @@ pub fn get_player_move(
     let _ = execute!(stdout, cursor::Hide);
     let _ = crossterm::terminal::enable_raw_mode();
     let mut from: Option<u8> = None;
-    let mut legal_moves = MoveList::new();
+    let mut legal_moves = MoveList::default();
     game.b.get_legal_moves_list(&mut legal_moves);
-    let mut possible_moves = MoveList::new();
+    let mut possible_moves = MoveList::default();
     loop {
         let read_event = event::read();
         if let Ok(event::Event::Mouse(event::MouseEvent {
