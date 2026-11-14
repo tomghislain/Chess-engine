@@ -309,17 +309,14 @@ impl Board {
     ) {
         let side_to_move = self.side_to_move;
         let free_knights = knights & !pinned;
+        let occ = self.occ.0;
         for from in free_knights {
             let attacks = KNIGHT_ATTACKS[from.as_usize()]
                 & !self.color_occ[side_to_move as usize]
                 & move_mask;
 
             for to in attacks {
-                let flag = if self.piece_at(to) == Piece::None {
-                    0
-                } else {
-                    CAPTURE_FLAG
-                };
+                let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
 
                 f(Move::new(from, to, Piece::None, flag));
             }
@@ -337,6 +334,7 @@ impl Board {
         let free_pieces = pieces & !pinned;
         let pinned_pieces = pieces & pinned;
         let base_mask = !self.color_occ[self.side_to_move as usize] & move_mask;
+        let occ = self.occ.0;
         for from in free_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
@@ -348,11 +346,7 @@ impl Board {
             attacks &= base_mask;
 
             for to in attacks {
-                let flag = if self.piece_at(to) == Piece::None {
-                    0
-                } else {
-                    CAPTURE_FLAG
-                };
+                let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
                 f(Move::new(from, to, Piece::None, flag));
             }
         }
@@ -367,11 +361,7 @@ impl Board {
             attacks &= base_mask & pin_rays[from.as_usize()];
 
             for to in attacks {
-                let flag = if self.piece_at(to) == Piece::None {
-                    0
-                } else {
-                    CAPTURE_FLAG
-                };
+                let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
                 f(Move::new(from, to, Piece::None, flag));
             }
         }
@@ -423,12 +413,9 @@ impl Board {
         let attacks = KING_ATTACKS[king_sq.as_usize()]
             & !self.color_occ[side_to_move as usize]
             & !danger_mask;
+        let occ = self.occ.0;
         for to in attacks {
-            let flag = if self.piece_at(to) == Piece::None {
-                0
-            } else {
-                CAPTURE_FLAG
-            };
+            let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
 
             f(Move::new(king_sq, to, Piece::None, flag));
         }
