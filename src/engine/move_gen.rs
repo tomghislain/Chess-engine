@@ -130,15 +130,19 @@ impl Board {
                 f(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
             }
             let attacks = if IS_WHITE {
-                WHITE_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::Black as usize]
-                    & move_mask
-                    & ray
+                unsafe {
+                    *WHITE_PAWN_ATTACKS.get_unchecked(from.as_usize())
+                        & self.color_occ[Color::Black as usize]
+                        & move_mask
+                        & ray
+                }
             } else {
-                BLACK_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::White as usize]
-                    & move_mask
-                    & ray
+                unsafe {
+                    *BLACK_PAWN_ATTACKS.get_unchecked(from.as_usize())
+                        & self.color_occ[Color::White as usize]
+                        & move_mask
+                        & ray
+                }
             };
             for to in attacks {
                 f(Move::new(from, to, Piece::None, CAPTURE_FLAG));
@@ -199,15 +203,19 @@ impl Board {
         for from in pinned_pawns {
             let ray = pin_rays[from.as_usize()];
             let attacks = if IS_WHITE {
-                WHITE_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::Black as usize]
-                    & move_mask
-                    & ray
+                unsafe {
+                    *WHITE_PAWN_ATTACKS.get_unchecked(from.as_usize())
+                        & self.color_occ[Color::Black as usize]
+                        & move_mask
+                        & ray
+                }
             } else {
-                BLACK_PAWN_ATTACKS[from.as_usize()]
-                    & self.color_occ[Color::White as usize]
-                    & move_mask
-                    & ray
+                unsafe {
+                    *BLACK_PAWN_ATTACKS.get_unchecked(from.as_usize())
+                        & self.color_occ[Color::White as usize]
+                        & move_mask
+                        & ray
+                }
             };
             for to in attacks {
                 for piece in promotion_pieces {
@@ -313,7 +321,7 @@ impl Board {
         let free_knights = knights & !pinned;
         let occ = self.occ.0;
         for from in free_knights {
-            let attacks = KNIGHT_ATTACKS[from.as_usize()] & move_mask;
+            let attacks = unsafe { *KNIGHT_ATTACKS.get_unchecked(from.as_usize()) } & move_mask;
 
             for to in attacks {
                 let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -412,7 +420,7 @@ impl Board {
     #[inline(always)]
     fn get_king_moves(&self, f: &mut impl FnMut(Move), king_sq: Square, danger_mask: Bitboard) {
         let side_to_move = self.side_to_move;
-        let attacks = KING_ATTACKS[king_sq.as_usize()]
+        let attacks = unsafe { *KING_ATTACKS.get_unchecked(king_sq.as_usize()) }
             & !self.color_occ[side_to_move as usize]
             & !danger_mask;
         let occ = self.occ.0;
@@ -474,14 +482,23 @@ impl Board {
             ),
         };
 
-        let potential_diag_attackers =
-            BISHOP_ATTACKS[BISHOP_OFFSETS[king_sq.as_usize()]] & diag_pieces;
-        let potential_orth_attackers = ROOK_ATTACKS[ROOK_OFFSETS[king_sq.as_usize()]] & orth_pieces;
+        let potential_diag_attackers = unsafe {
+            *BISHOP_ATTACKS.get_unchecked(*BISHOP_OFFSETS.get_unchecked(king_sq.as_usize()))
+                & diag_pieces
+        };
+        let potential_orth_attackers = unsafe {
+            *ROOK_ATTACKS.get_unchecked(*ROOK_OFFSETS.get_unchecked(king_sq.as_usize()))
+                & orth_pieces
+        };
 
         let attackers = potential_diag_attackers | potential_orth_attackers;
 
         for attacker_sq in attackers {
-            let between = BETWEEN[king_sq.as_usize()][attacker_sq.as_usize()];
+            let between = unsafe {
+                *BETWEEN
+                    .get_unchecked(king_sq.as_usize())
+                    .get_unchecked(attacker_sq.as_usize())
+            };
             let blockers = between & self.occ;
             let our_blockers = between & self.color_occ[self.side_to_move as usize];
 
@@ -501,9 +518,11 @@ impl Board {
         let checker_piece = self.piece_at(checker_sq);
 
         match checker_piece {
-            Piece::BR | Piece::WR | Piece::BB | Piece::WB | Piece::BQ | Piece::WQ => {
-                BETWEEN[king_sq.as_usize()][checker_sq.as_usize()]
-            }
+            Piece::BR | Piece::WR | Piece::BB | Piece::WB | Piece::BQ | Piece::WQ => unsafe {
+                *BETWEEN
+                    .get_unchecked(king_sq.as_usize())
+                    .get_unchecked(checker_sq.as_usize())
+            },
             _ => Bitboard(0),
         }
     }
