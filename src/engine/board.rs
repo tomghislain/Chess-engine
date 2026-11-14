@@ -90,7 +90,7 @@ pub struct Board {
     pub hash: u64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Undo {
     mv: Move,
     captured_piece: Piece,
@@ -257,26 +257,42 @@ impl Board {
     }
 
     #[inline(always)]
-    pub const fn piece_at(&self, sq: Square) -> Piece {
-        self.mailbox[sq.as_usize()]
+    pub fn piece_at(&self, sq: Square) -> Piece {
+        debug_assert!(sq.as_u8() < 64);
+        unsafe { *self.mailbox.get_unchecked(sq.as_usize()) }
     }
 
     // Sets the bit to 0 at index sq of the bitmap at index p of self.pieces
     fn remove_piece(&mut self, p: Piece, sq: Square) {
+        debug_assert!(p != Piece::None);
+        debug_assert!(sq.as_u8() < 64);
         let mask = Bitboard::from(sq);
-        self.pieces[p as usize] &= !mask;
+        unsafe {
+            *self.pieces.get_unchecked_mut(p as usize) &= !mask;
+            *self.mailbox.get_unchecked_mut(sq.as_usize()) = Piece::None;
+        }
     }
 
     // Sets the bit to 1 at index sq of the bitmap at index p of self.pieces
     fn add_piece(&mut self, p: Piece, sq: Square) {
+        debug_assert!(p != Piece::None);
+        debug_assert!(sq.as_u8() < 64);
         let mask = Bitboard::from(sq);
-        self.pieces[p as usize] |= mask;
+        unsafe {
+            *self.pieces.get_unchecked_mut(p as usize) |= mask;
+            *self.mailbox.get_unchecked_mut(sq.as_usize()) = p;
+        }
     }
 
     // Flips the bits at the from and to index in the bitmap at index p of self.pieces
     fn move_piece(&mut self, p: Piece, from: Square, to: Square) {
+        debug_assert!(p != Piece::None);
         let mask = Bitboard::from(from) | Bitboard::from(to);
-        self.pieces[p as usize] ^= mask;
+        unsafe {
+            *self.pieces.get_unchecked_mut(p as usize) ^= mask;
+            *self.mailbox.get_unchecked_mut(from.as_usize()) = Piece::None;
+            *self.mailbox.get_unchecked_mut(to.as_usize()) = p;
+        }
     }
 
     pub fn make_move(&mut self, mv: Move) -> Undo {
@@ -314,7 +330,6 @@ impl Board {
             };
             let c_p = self.piece_at(c_sq);
             self.remove_piece(c_p, c_sq);
-            self.mailbox[c_sq.as_usize()] = Piece::None;
             let mask = Bitboard::from(c_sq);
             opponent_side_mask |= mask;
             self.hash ^= z.piece_square[c_p as usize][c_sq.as_usize()];
@@ -332,14 +347,10 @@ impl Board {
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(moved_piece, mv.from());
-            self.mailbox[mv.from().as_usize()] = Piece::None;
             self.add_piece(promotion_piece, mv.to());
-            self.mailbox[mv.to().as_usize()] = promotion_piece;
             self.hash ^= z.piece_square[promotion_piece as usize][mv.to().as_usize()];
         } else {
             self.move_piece(moved_piece, mv.from(), mv.to());
-            self.mailbox[mv.from().as_usize()] = Piece::None;
-            self.mailbox[mv.to().as_usize()] = moved_piece;
             self.hash ^= z.piece_square[moved_piece as usize][mv.to().as_usize()];
 
             if is_castling {
@@ -352,8 +363,6 @@ impl Board {
                 };
 
                 self.move_piece(rook, rook_from, rook_to);
-                self.mailbox[rook_from.as_usize()] = Piece::None;
-                self.mailbox[rook_to.as_usize()] = rook;
 
                 let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
                 moving_side_mask |= rook_mask;
@@ -406,6 +415,7 @@ impl Board {
     }
 
     pub fn unmake_move(&mut self, undo: Undo) {
+        debug_assert!(undo != Undo::default());
         self.side_to_move = self.side_to_move.flip();
 
         let mv = undo.mv;
@@ -422,23 +432,18 @@ impl Board {
         if is_promotion {
             let promotion_piece = mv.promotion();
             self.remove_piece(promotion_piece, mv.to());
-            self.mailbox[mv.to().as_usize()] = Piece::None;
 
             match self.side_to_move {
                 Color::White => {
                     self.add_piece(Piece::WP, mv.from());
-                    self.mailbox[mv.from().as_usize()] = Piece::WP;
                 }
                 Color::Black => {
                     self.add_piece(Piece::BP, mv.from());
-                    self.mailbox[mv.from().as_usize()] = Piece::BP;
                 }
             }
         } else {
             let moved_piece = self.piece_at(mv.to());
             self.move_piece(moved_piece, mv.to(), mv.from());
-            self.mailbox[mv.to().as_usize()] = Piece::None;
-            self.mailbox[mv.from().as_usize()] = moved_piece;
 
             if is_castling {
                 let (rook, rook_from, rook_to) = match mv.to().as_u8() {
@@ -450,8 +455,6 @@ impl Board {
                 };
 
                 self.move_piece(rook, rook_from, rook_to);
-                self.mailbox[rook_from.as_usize()] = Piece::None;
-                self.mailbox[rook_to.as_usize()] = rook;
 
                 let rook_mask = Bitboard::from(rook_from) | Bitboard::from(rook_to);
                 moving_side_mask |= rook_mask;
@@ -472,7 +475,6 @@ impl Board {
             let sq_mask = Bitboard::from(c_sq);
             opponent_side_mask |= sq_mask;
             self.add_piece(c_p, c_sq);
-            self.mailbox[c_sq.as_usize()] = c_p;
         }
 
         // Recompute occupancy
