@@ -759,7 +759,7 @@ mod tests {
         assert!(b.perft(4) == 197_281);
         assert!(b.perft(5) == 4_865_609);
         assert!(b.perft(6) == 119_060_324);
-        // assert!(b.perft(7) == 3_195_901_860);
+        assert!(b.perft(7) == 3_195_901_860);
         // assert!(b.perft(8) == 84_998_976_956);
         // assert!(b.perft(9) == 2_439_530_234_167);
     }
@@ -773,7 +773,7 @@ mod tests {
         assert!(b.perft(3) == 97_862);
         assert!(b.perft(4) == 4_085_603);
         assert!(b.perft(5) == 193_690_690);
-        // assert!(b.perft(6) == 8_031_647_685);
+        assert!(b.perft(6) == 8_031_647_685);
     }
 
     #[test]
@@ -786,7 +786,7 @@ mod tests {
         assert!(b.perft(5) == 674_624);
         assert!(b.perft(6) == 11_030_083);
         assert!(b.perft(7) == 178_633_661);
-        // assert!(b.perft(8) == 3_009_794_393);
+        assert!(b.perft(8) == 3_009_794_393);
     }
 
     #[test]
@@ -797,7 +797,7 @@ mod tests {
         assert!(b.perft(3) == 9_467);
         assert!(b.perft(4) == 422_333);
         assert!(b.perft(5) == 15_833_292);
-        // assert!(b.perft(6) == 706_045_033);
+        assert!(b.perft(6) == 706_045_033);
     }
 
     #[test]

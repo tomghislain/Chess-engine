@@ -9,6 +9,16 @@ use crate::engine::types::{
     MoveList, PROMOTION_FLAG, Piece, Square,
 };
 
+#[derive(Clone, Copy)]
+struct PinInfo {
+    orth_rays: Bitboard,
+    diag_rays: Bitboard,
+    // pinned_orth: pieces pinned verticaly or horizontaly
+    pinned_orth: Bitboard,
+    // pinned_diag: pieces pinned diagonaly
+    pinned_diag: Bitboard,
+}
+
 impl Board {
     #[allow(clippy::too_many_lines)]
     #[inline(always)]
@@ -16,9 +26,8 @@ impl Board {
         &self,
         f: &mut impl FnMut(Move),
         move_mask: Bitboard,
-        pinned: Bitboard,
-        pin_rays: &[Bitboard; 64],
         king_sq: Square,
+        pins: PinInfo,
     ) {
         let pawns = if IS_WHITE {
             self.pieces[Piece::WP as usize]
@@ -45,8 +54,9 @@ impl Board {
         let push_targets = empty & move_mask;
 
         // Non-promotions
-        let free_pawns = non_promotion_pawns & !pinned;
-        let pinned_pawns = non_promotion_pawns & pinned;
+        let free_pawns = non_promotion_pawns & !(pins.pinned_orth | pins.pinned_diag);
+        let pinned_orth_pawns = non_promotion_pawns & pins.pinned_orth;
+        let pinned_diag_pawns = non_promotion_pawns & pins.pinned_diag;
         // Free
         let single_push = if IS_WHITE {
             (free_pawns << 8) & push_targets
@@ -110,38 +120,39 @@ impl Board {
             f(Move::new(from, to, Piece::None, CAPTURE_FLAG));
         }
         // Pinned
-        for from in pinned_pawns {
-            let ray = pin_rays[from.as_usize()];
+        for from in pinned_orth_pawns {
             let from_bb = Bitboard::from(from);
             let single_push = if IS_WHITE {
-                (from_bb << 8) & push_targets & ray
+                (from_bb << 8) & push_targets & pins.orth_rays
             } else {
-                (from_bb >> 8) & push_targets & ray
+                (from_bb >> 8) & push_targets & pins.orth_rays
             };
             for to in single_push {
                 f(Move::new(from, to, Piece::None, 0));
             }
             let double_push = if IS_WHITE {
-                ((((from_bb & RANK_2) << 8) & empty) << 8) & push_targets & ray
+                ((((from_bb & RANK_2) << 8) & empty) << 8) & push_targets & pins.orth_rays
             } else {
-                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & push_targets & ray
+                ((((from_bb & RANK_7) >> 8) & empty) >> 8) & push_targets & pins.orth_rays
             };
             for to in double_push {
                 f(Move::new(from, to, Piece::None, DOUBLE_PAWN_PUSH_FLAG));
             }
+        }
+        for from in pinned_diag_pawns {
             let attacks = if IS_WHITE {
                 unsafe {
                     *WHITE_PAWN_ATTACKS.get_unchecked(from.as_usize())
                         & self.color_occ[Color::Black as usize]
                         & move_mask
-                        & ray
+                        & pins.diag_rays
                 }
             } else {
                 unsafe {
                     *BLACK_PAWN_ATTACKS.get_unchecked(from.as_usize())
                         & self.color_occ[Color::White as usize]
                         & move_mask
-                        & ray
+                        & pins.diag_rays
                 }
             };
             for to in attacks {
@@ -150,8 +161,8 @@ impl Board {
         }
 
         // Promotions
-        let free_pawns = promotion_pawns & !pinned;
-        let pinned_pawns = promotion_pawns & pinned;
+        let free_pawns = promotion_pawns & !(pins.pinned_orth | pins.pinned_diag);
+        let pinned_diag_pawns = promotion_pawns & pins.pinned_diag;
         // Free
         let single_push = if IS_WHITE {
             (free_pawns << 8) & push_targets
@@ -200,21 +211,20 @@ impl Board {
             }
         }
         // Pinned
-        for from in pinned_pawns {
-            let ray = pin_rays[from.as_usize()];
+        for from in pinned_diag_pawns {
             let attacks = if IS_WHITE {
                 unsafe {
                     *WHITE_PAWN_ATTACKS.get_unchecked(from.as_usize())
                         & self.color_occ[Color::Black as usize]
                         & move_mask
-                        & ray
+                        & pins.diag_rays
                 }
             } else {
                 unsafe {
                     *BLACK_PAWN_ATTACKS.get_unchecked(from.as_usize())
                         & self.color_occ[Color::White as usize]
                         & move_mask
-                        & ray
+                        & pins.diag_rays
                 }
             };
             for to in attacks {
@@ -316,9 +326,9 @@ impl Board {
         f: &mut impl FnMut(Move),
         knights: Bitboard,
         move_mask: Bitboard,
-        pinned: Bitboard,
+        pins: PinInfo,
     ) {
-        let free_knights = knights & !pinned;
+        let free_knights = knights & !(pins.pinned_orth | pins.pinned_diag);
         let occ = self.occ.0;
         for from in free_knights {
             let attacks = unsafe { *KNIGHT_ATTACKS.get_unchecked(from.as_usize()) } & move_mask;
@@ -337,11 +347,12 @@ impl Board {
         f: &mut impl FnMut(Move),
         pieces: Bitboard,
         move_mask: Bitboard,
-        pinned: Bitboard,
-        pin_rays: &[Bitboard; 64],
+        pins: PinInfo,
     ) {
-        let free_pieces = pieces & !pinned;
-        let pinned_pieces = pieces & pinned;
+        let free_pieces = pieces & !(pins.pinned_orth | pins.pinned_diag);
+        let pinned_orth_pieces = pieces & pins.pinned_orth;
+        let pinned_diag_pieces = pieces & pins.pinned_diag;
+
         let occ = self.occ.0;
         for from in free_pieces {
             let mut attacks = Bitboard(0);
@@ -358,19 +369,25 @@ impl Board {
                 f(Move::new(from, to, Piece::None, flag));
             }
         }
-        for from in pinned_pieces {
-            let mut attacks = Bitboard(0);
-            if IS_ROOK {
-                attacks |= rook_attacks(from.as_usize(), self.occ);
-            }
-            if IS_BISHOP {
-                attacks |= bishop_attacks(from.as_usize(), self.occ);
-            }
-            attacks &= move_mask & pin_rays[from.as_usize()];
+        if IS_ROOK {
+            for from in pinned_orth_pieces {
+                let attacks = rook_attacks(from.as_usize(), self.occ) & move_mask & pins.orth_rays;
 
-            for to in attacks {
-                let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
-                f(Move::new(from, to, Piece::None, flag));
+                for to in attacks {
+                    let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
+                    f(Move::new(from, to, Piece::None, flag));
+                }
+            }
+        }
+        if IS_BISHOP {
+            for from in pinned_diag_pieces {
+                let attacks =
+                    bishop_attacks(from.as_usize(), self.occ) & move_mask & pins.diag_rays;
+
+                for to in attacks {
+                    let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
+                    f(Move::new(from, to, Piece::None, flag));
+                }
             }
         }
     }
@@ -467,9 +484,10 @@ impl Board {
     }
 
     #[inline(always)]
-    fn compute_pins(&self, king_sq: Square) -> (Bitboard, [Bitboard; 64]) {
-        let mut pinned = Bitboard(0);
-        let mut pin_rays = [Bitboard(0); 64];
+    fn compute_pins(&self, king_sq: Square, orth_rays: Bitboard, diag_rays: Bitboard) -> PinInfo {
+        let us = self.color_occ[self.side_to_move as usize];
+        let mut pinned_orth = Bitboard(0);
+        let mut pinned_diag = Bitboard(0);
 
         let (orth_pieces, diag_pieces) = match self.side_to_move {
             Color::White => (
@@ -482,34 +500,44 @@ impl Board {
             ),
         };
 
-        let potential_diag_attackers = unsafe {
-            *BISHOP_ATTACKS.get_unchecked(*BISHOP_OFFSETS.get_unchecked(king_sq.as_usize()))
-                & diag_pieces
-        };
-        let potential_orth_attackers = unsafe {
-            *ROOK_ATTACKS.get_unchecked(*ROOK_OFFSETS.get_unchecked(king_sq.as_usize()))
-                & orth_pieces
-        };
+        let potential_orth_attackers = orth_rays & orth_pieces;
 
-        let attackers = potential_diag_attackers | potential_orth_attackers;
-
-        for attacker_sq in attackers {
+        for attacker_sq in potential_orth_attackers {
             let between = unsafe {
                 *BETWEEN
                     .get_unchecked(king_sq.as_usize())
                     .get_unchecked(attacker_sq.as_usize())
             };
             let blockers = between & self.occ;
-            let our_blockers = between & self.color_occ[self.side_to_move as usize];
+            let our_blockers = between & us;
 
             if blockers.count_ones() == 1 && !our_blockers.is_empty() {
-                let pinned_sq = blockers.trailing_zeros() as usize;
-                pinned |= blockers;
-                pin_rays[pinned_sq] = between | Bitboard::from(attacker_sq);
+                pinned_orth |= blockers;
             }
         }
 
-        (pinned, pin_rays)
+        let potential_diag_attackers = diag_rays & diag_pieces;
+
+        for attacker_sq in potential_diag_attackers {
+            let between = unsafe {
+                *BETWEEN
+                    .get_unchecked(king_sq.as_usize())
+                    .get_unchecked(attacker_sq.as_usize())
+            };
+            let blockers = between & self.occ;
+            let our_blockers = between & us;
+
+            if blockers.count_ones() == 1 && !our_blockers.is_empty() {
+                pinned_diag |= blockers;
+            }
+        }
+
+        PinInfo {
+            orth_rays,
+            diag_rays,
+            pinned_orth,
+            pinned_diag,
+        }
     }
 
     #[inline(always)]
@@ -603,9 +631,8 @@ impl Board {
         &self,
         f: &mut impl FnMut(Move),
         move_mask: Bitboard,
-        pinned: Bitboard,
-        pin_rays: &[Bitboard; 64],
         king_sq: Square,
+        pins: PinInfo,
     ) {
         let (knights, rooks, bishops, queens) = if IS_WHITE {
             (
@@ -622,11 +649,11 @@ impl Board {
                 self.pieces[Piece::BQ as usize],
             )
         };
-        self.get_pawn_moves::<IS_WHITE>(f, move_mask, pinned, pin_rays, king_sq);
-        self.get_knight_moves(f, knights, move_mask, pinned);
-        self.get_sliding_moves::<true, false>(f, rooks, move_mask, pinned, pin_rays);
-        self.get_sliding_moves::<false, true>(f, bishops, move_mask, pinned, pin_rays);
-        self.get_sliding_moves::<true, true>(f, queens, move_mask, pinned, pin_rays);
+        self.get_pawn_moves::<IS_WHITE>(f, move_mask, king_sq, pins);
+        self.get_knight_moves(f, knights, move_mask, pins);
+        self.get_sliding_moves::<true, false>(f, rooks, move_mask, pins);
+        self.get_sliding_moves::<false, true>(f, bishops, move_mask, pins);
+        self.get_sliding_moves::<true, true>(f, queens, move_mask, pins);
     }
 
     pub fn get_legal_moves_list(&self, moves: &mut MoveList) {
@@ -667,17 +694,18 @@ impl Board {
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
         } & !self.color_occ[self.side_to_move as usize];
 
-        // pinned: bitmap of pieces that cannot move because they would put the king in check
-        // pin_rays: list of bitmaps for each square a piece could be on, that show where that piece can move without puting the king in check
-        let (pinned, pin_rays) = self.compute_pins(king_sq);
+        // Rays from the king in horizontal/vertical and diagonal directions, to compute pins
+        let orth_rays =
+            unsafe { *ROOK_ATTACKS.get_unchecked(*ROOK_OFFSETS.get_unchecked(king_sq.as_usize())) };
+        let diag_rays = unsafe {
+            *BISHOP_ATTACKS.get_unchecked(*BISHOP_OFFSETS.get_unchecked(king_sq.as_usize()))
+        };
+
+        let pins = self.compute_pins(king_sq, orth_rays, diag_rays);
 
         match self.side_to_move {
-            Color::White => {
-                self.get_non_king_moves::<true>(&mut f, move_mask, pinned, &pin_rays, king_sq)
-            }
-            Color::Black => {
-                self.get_non_king_moves::<false>(&mut f, move_mask, pinned, &pin_rays, king_sq)
-            }
+            Color::White => self.get_non_king_moves::<true>(&mut f, move_mask, king_sq, pins),
+            Color::Black => self.get_non_king_moves::<false>(&mut f, move_mask, king_sq, pins),
         }
     }
 
