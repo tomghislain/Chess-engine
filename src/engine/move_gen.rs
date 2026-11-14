@@ -393,11 +393,10 @@ impl Board {
     }
 
     #[inline(always)]
-    fn compute_danger(&self, king_sq: Square) -> Bitboard {
+    fn compute_danger<const IS_WHITE: bool>(&self, king_sq: Square) -> Bitboard {
         let mut danger = Bitboard(0);
-        let (pawn_attacks, knights, orth_pieces, diag_pieces, enemy_king) = match self.side_to_move
-        {
-            Color::White => (
+        let (pawn_attacks, knights, orth_pieces, diag_pieces, enemy_king) = if IS_WHITE {
+            (
                 {
                     let pawns = self.pieces[Piece::BP as usize];
                     ((pawns >> 7) & !FILE_A) | ((pawns >> 9) & !FILE_H)
@@ -406,8 +405,9 @@ impl Board {
                 self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
                 self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
                 self.pieces[Piece::BK as usize],
-            ),
-            Color::Black => (
+            )
+        } else {
+            (
                 {
                     let pawns = self.pieces[Piece::WP as usize];
                     ((pawns << 7) & !FILE_H) | ((pawns << 9) & !FILE_A)
@@ -416,8 +416,9 @@ impl Board {
                 self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
                 self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
                 self.pieces[Piece::WK as usize],
-            ),
+            )
         };
+
         let kingless_occ = self.occ ^ Bitboard::from(king_sq);
         danger |= pawn_attacks;
         for sq in knights {
@@ -435,11 +436,8 @@ impl Board {
     }
 
     #[inline(always)]
-    fn get_king_moves(&self, f: &mut impl FnMut(Move), king_sq: Square, danger_mask: Bitboard) {
-        let side_to_move = self.side_to_move;
-        let attacks = unsafe { *KING_ATTACKS.get_unchecked(king_sq.as_usize()) }
-            & !self.color_occ[side_to_move as usize]
-            & !danger_mask;
+    fn get_king_moves(&self, f: &mut impl FnMut(Move), king_sq: Square, nomove_mask: Bitboard) {
+        let attacks = unsafe { *KING_ATTACKS.get_unchecked(king_sq.as_usize()) } & !nomove_mask;
         let occ = self.occ.0;
         for to in attacks {
             let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -449,25 +447,26 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn compute_checkers(&self, king_sq: Square) -> Bitboard {
+    pub fn compute_checkers<const IS_WHITE: bool>(&self, king_sq: Square) -> Bitboard {
         let mut checkers = Bitboard(0);
-        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) =
-            match self.side_to_move.flip() {
-                Color::Black => (
-                    self.pieces[Piece::BP as usize],
-                    WHITE_PAWN_ATTACKS,
-                    self.pieces[Piece::BN as usize],
-                    self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
-                    self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
-                ),
-                Color::White => (
-                    self.pieces[Piece::WP as usize],
-                    BLACK_PAWN_ATTACKS,
-                    self.pieces[Piece::WN as usize],
-                    self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
-                    self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
-                ),
-            };
+        let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = if IS_WHITE {
+            (
+                self.pieces[Piece::BP as usize],
+                WHITE_PAWN_ATTACKS,
+                self.pieces[Piece::BN as usize],
+                self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
+            )
+        } else {
+            (
+                self.pieces[Piece::WP as usize],
+                BLACK_PAWN_ATTACKS,
+                self.pieces[Piece::WN as usize],
+                self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
+            )
+        };
+
         let pawn_attacks = pawn_attack_table[king_sq.as_usize()];
         checkers |= pawn_attacks & pawns;
 
@@ -484,20 +483,26 @@ impl Board {
     }
 
     #[inline(always)]
-    fn compute_pins(&self, king_sq: Square, orth_rays: Bitboard, diag_rays: Bitboard) -> PinInfo {
-        let us = self.color_occ[self.side_to_move as usize];
+    fn compute_pins<const IS_WHITE: bool>(
+        &self,
+        king_sq: Square,
+        us: Bitboard,
+        orth_rays: Bitboard,
+        diag_rays: Bitboard,
+    ) -> PinInfo {
         let mut pinned_orth = Bitboard(0);
         let mut pinned_diag = Bitboard(0);
 
-        let (orth_pieces, diag_pieces) = match self.side_to_move {
-            Color::White => (
+        let (orth_pieces, diag_pieces) = if IS_WHITE {
+            (
                 self.pieces[Piece::BR as usize] | self.pieces[Piece::BQ as usize],
                 self.pieces[Piece::BB as usize] | self.pieces[Piece::BQ as usize],
-            ),
-            Color::Black => (
+            )
+        } else {
+            (
                 self.pieces[Piece::WR as usize] | self.pieces[Piece::WQ as usize],
                 self.pieces[Piece::WB as usize] | self.pieces[Piece::WQ as usize],
-            ),
+            )
         };
 
         let potential_orth_attackers = orth_rays & orth_pieces;
@@ -556,72 +561,71 @@ impl Board {
     }
 
     #[inline(always)]
-    fn get_castling_moves(&self, f: &mut impl FnMut(Move), king_danger_squares: Bitboard) {
+    fn get_castling_moves<const IS_WHITE: bool>(
+        &self,
+        f: &mut impl FnMut(Move),
+        king_danger_squares: Bitboard,
+    ) {
         let castling_rights = self.castling;
-        match self.side_to_move {
-            Color::White => {
-                if castling_rights & WK_CASTLE != 0
-                    && (self.occ & (Bitboard::from(Square(5)) | Bitboard::from(Square(6))))
-                        .is_empty()
-                    && (king_danger_squares
-                        & (Bitboard::from(Square(4))
-                            | Bitboard::from(Square(5))
-                            | Bitboard::from(Square(6))))
-                    .is_empty()
-                {
-                    f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
-                }
-                if castling_rights & WQ_CASTLE != 0
-                    && (self.occ
-                        & (Bitboard::from(Square(1))
-                            | Bitboard::from(Square(2))
-                            | Bitboard::from(Square(3))))
-                    .is_empty()
-                    && (king_danger_squares
-                        & (Bitboard::from(Square(4))
-                            | Bitboard::from(Square(3))
-                            | Bitboard::from(Square(2))))
-                    .is_empty()
-                {
-                    f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
-                }
+        if IS_WHITE {
+            if castling_rights & WK_CASTLE != 0
+                && (self.occ & (Bitboard::from(Square(5)) | Bitboard::from(Square(6)))).is_empty()
+                && (king_danger_squares
+                    & (Bitboard::from(Square(4))
+                        | Bitboard::from(Square(5))
+                        | Bitboard::from(Square(6))))
+                .is_empty()
+            {
+                f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
             }
-            Color::Black => {
-                if castling_rights & BK_CASTLE != 0
-                    && (self.occ & (Bitboard::from(Square(61)) | Bitboard::from(Square(62))))
-                        .is_empty()
-                    && (king_danger_squares
-                        & (Bitboard::from(Square(60))
-                            | Bitboard::from(Square(61))
-                            | Bitboard::from(Square(62))))
-                    .is_empty()
-                {
-                    f(Move::new(
-                        Square(60),
-                        Square(62),
-                        Piece::None,
-                        CASTLING_FLAG,
-                    ));
-                }
-                if castling_rights & BQ_CASTLE != 0
-                    && (self.occ
-                        & (Bitboard::from(Square(57))
-                            | Bitboard::from(Square(58))
-                            | Bitboard::from(Square(59))))
-                    .is_empty()
-                    && (king_danger_squares
-                        & (Bitboard::from(Square(60))
-                            | Bitboard::from(Square(59))
-                            | Bitboard::from(Square(58))))
-                    .is_empty()
-                {
-                    f(Move::new(
-                        Square(60),
-                        Square(58),
-                        Piece::None,
-                        CASTLING_FLAG,
-                    ));
-                }
+            if castling_rights & WQ_CASTLE != 0
+                && (self.occ
+                    & (Bitboard::from(Square(1))
+                        | Bitboard::from(Square(2))
+                        | Bitboard::from(Square(3))))
+                .is_empty()
+                && (king_danger_squares
+                    & (Bitboard::from(Square(4))
+                        | Bitboard::from(Square(3))
+                        | Bitboard::from(Square(2))))
+                .is_empty()
+            {
+                f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
+            }
+        } else {
+            if castling_rights & BK_CASTLE != 0
+                && (self.occ & (Bitboard::from(Square(61)) | Bitboard::from(Square(62)))).is_empty()
+                && (king_danger_squares
+                    & (Bitboard::from(Square(60))
+                        | Bitboard::from(Square(61))
+                        | Bitboard::from(Square(62))))
+                .is_empty()
+            {
+                f(Move::new(
+                    Square(60),
+                    Square(62),
+                    Piece::None,
+                    CASTLING_FLAG,
+                ));
+            }
+            if castling_rights & BQ_CASTLE != 0
+                && (self.occ
+                    & (Bitboard::from(Square(57))
+                        | Bitboard::from(Square(58))
+                        | Bitboard::from(Square(59))))
+                .is_empty()
+                && (king_danger_squares
+                    & (Bitboard::from(Square(60))
+                        | Bitboard::from(Square(59))
+                        | Bitboard::from(Square(58))))
+                .is_empty()
+            {
+                f(Move::new(
+                    Square(60),
+                    Square(58),
+                    Piece::None,
+                    CASTLING_FLAG,
+                ));
             }
         }
     }
@@ -664,25 +668,35 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn feed_legal_moves(&self, mut f: impl FnMut(Move)) {
+    pub fn feed_legal_moves(&self, f: impl FnMut(Move)) {
+        match self.side_to_move {
+            Color::White => self.feed_legal_moves_impl::<true>(f),
+            Color::Black => self.feed_legal_moves_impl::<false>(f),
+        }
+    }
+
+    #[inline(always)]
+    fn feed_legal_moves_impl<const IS_WHITE: bool>(&self, mut f: impl FnMut(Move)) {
         let king_sq = Square(
-            self.pieces[if self.side_to_move == Color::White {
-                Piece::WK
-            } else {
-                Piece::BK
-            } as usize]
-                .trailing_zeros(),
+            self.pieces[if IS_WHITE { Piece::WK } else { Piece::BK } as usize].trailing_zeros(),
         );
         debug_assert!(king_sq.as_u8() < 64);
 
-        let king_danger_mask = self.compute_danger(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
+        let us = self.color_occ[if IS_WHITE {
+            Color::White as usize
+        } else {
+            Color::Black as usize
+        }];
+
+        let king_danger_mask = self.compute_danger::<IS_WHITE>(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
+        let king_nomove_mask = king_danger_mask | us;
 
         let in_check = !(king_danger_mask & Bitboard::from(king_sq)).is_empty();
 
-        self.get_king_moves(&mut f, king_sq, king_danger_mask);
+        self.get_king_moves(&mut f, king_sq, king_nomove_mask);
 
         let move_mask = if in_check {
-            let checkers: Bitboard = self.compute_checkers(king_sq); // Bitmap of pieces that put the king in check
+            let checkers: Bitboard = self.compute_checkers::<IS_WHITE>(king_sq); // Bitmap of pieces that put the king in check
 
             if checkers.count_ones() > 1 {
                 return; // If it is a double check, only king moves can be legal
@@ -690,9 +704,9 @@ impl Board {
             // block_mask: bitmap of squares a piece can go to in order to stop the check (if the checker is a sliding piece, otherwise no squares can block it without capturing)
             self.compute_block_mask(king_sq, checkers) | checkers
         } else {
-            self.get_castling_moves(&mut f, king_danger_mask); // Castling moves can only happen when not in check
+            self.get_castling_moves::<IS_WHITE>(&mut f, king_danger_mask); // Castling moves can only happen when not in check
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
-        } & !self.color_occ[self.side_to_move as usize];
+        } & !us;
 
         // Rays from the king in horizontal/vertical and diagonal directions, to compute pins
         let orth_rays =
@@ -701,12 +715,9 @@ impl Board {
             *BISHOP_ATTACKS.get_unchecked(*BISHOP_OFFSETS.get_unchecked(king_sq.as_usize()))
         };
 
-        let pins = self.compute_pins(king_sq, orth_rays, diag_rays);
+        let pins = self.compute_pins::<IS_WHITE>(king_sq, us, orth_rays, diag_rays);
 
-        match self.side_to_move {
-            Color::White => self.get_non_king_moves::<true>(&mut f, move_mask, king_sq, pins),
-            Color::Black => self.get_non_king_moves::<false>(&mut f, move_mask, king_sq, pins),
-        }
+        self.get_non_king_moves::<IS_WHITE>(&mut f, move_mask, king_sq, pins);
     }
 
     pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
