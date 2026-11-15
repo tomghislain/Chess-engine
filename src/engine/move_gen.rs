@@ -286,16 +286,16 @@ impl Board {
         let (pawn_table, attacker_bishops, attacker_rooks, attacker_queens) = if IS_WHITE {
             (
                 BLACK_PAWN_ATTACKS,
-                self.pieces[Piece::WB as usize],
-                self.pieces[Piece::WR as usize],
-                self.pieces[Piece::WQ as usize],
+                self.pieces[Piece::BB as usize],
+                self.pieces[Piece::BR as usize],
+                self.pieces[Piece::BQ as usize],
             )
         } else {
             (
                 WHITE_PAWN_ATTACKS,
-                self.pieces[Piece::BB as usize],
-                self.pieces[Piece::BR as usize],
-                self.pieces[Piece::BQ as usize],
+                self.pieces[Piece::WB as usize],
+                self.pieces[Piece::WR as usize],
+                self.pieces[Piece::WQ as usize],
             )
         };
 
