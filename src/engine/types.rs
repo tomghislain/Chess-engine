@@ -185,6 +185,7 @@ impl Default for MoveList {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Bitboard(pub u64);
 
 impl Bitboard {
@@ -222,6 +223,7 @@ impl From<Square> for Bitboard {
 impl Iterator for Bitboard {
     type Item = Square;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_empty() {
             None
