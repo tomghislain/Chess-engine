@@ -285,14 +285,14 @@ impl Board {
         let sq_usize = king_sq.as_usize();
         let (pawn_table, attacker_bishops, attacker_rooks, attacker_queens) = if IS_WHITE {
             (
-                BLACK_PAWN_ATTACKS,
+                WHITE_PAWN_ATTACKS,
                 self.pieces[Piece::BB as usize],
                 self.pieces[Piece::BR as usize],
                 self.pieces[Piece::BQ as usize],
             )
         } else {
             (
-                WHITE_PAWN_ATTACKS,
+                BLACK_PAWN_ATTACKS,
                 self.pieces[Piece::WB as usize],
                 self.pieces[Piece::WR as usize],
                 self.pieces[Piece::WQ as usize],
