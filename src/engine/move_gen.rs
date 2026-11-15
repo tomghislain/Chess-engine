@@ -40,6 +40,7 @@ impl Board {
         move_mask: Bitboard,
         king_sq: Square,
         pins: PinInfo,
+        occ: Bitboard,
     ) {
         let pawns = if IS_WHITE {
             self.pieces[Piece::WP as usize]
@@ -51,7 +52,7 @@ impl Board {
         } else {
             [Piece::BN, Piece::BB, Piece::BR, Piece::BQ]
         };
-        let empty = !self.occ();
+        let empty = !occ;
         let promotion_pawns = if IS_WHITE {
             pawns & RANK_7
         } else {
@@ -257,7 +258,7 @@ impl Board {
                 (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns
             };
             for from in candidates {
-                let changed_occ = self.occ() ^ (Bitboard::from(from)) ^ (captured_bb) ^ (to_bb);
+                let changed_occ = occ ^ (Bitboard::from(from)) ^ (captured_bb) ^ (to_bb);
                 let changed_pawns = if IS_WHITE {
                     self.pieces[Piece::BP as usize] ^ captured_bb
                 } else {
@@ -329,9 +330,10 @@ impl Board {
         knights: Bitboard,
         move_mask: Bitboard,
         pins: PinInfo,
+        occ: Bitboard,
     ) {
         let free_knights = knights & !(pins.pinned_orth | pins.pinned_diag);
-        let occ = self.occ().0;
+        let occ = occ.0;
         for from in free_knights {
             let attacks = unsafe { *KNIGHT_ATTACKS.get_unchecked(from.as_usize()) } & move_mask;
 
@@ -350,45 +352,43 @@ impl Board {
         pieces: Bitboard,
         move_mask: Bitboard,
         pins: PinInfo,
+        occ: Bitboard,
     ) {
         let free_pieces = pieces & !(pins.pinned_orth | pins.pinned_diag);
         let pinned_orth_pieces = pieces & pins.pinned_orth;
         let pinned_diag_pieces = pieces & pins.pinned_diag;
 
-        let occ = self.occ().0;
         for from in free_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
-                attacks |= rook_attacks(from.as_usize(), self.occ());
+                attacks |= rook_attacks(from.as_usize(), occ);
             }
             if IS_BISHOP {
-                attacks |= bishop_attacks(from.as_usize(), self.occ());
+                attacks |= bishop_attacks(from.as_usize(), occ);
             }
             attacks &= move_mask;
 
             for to in attacks {
-                let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
+                let flag = CAPTURE_FLAG & (occ.0 >> to.as_u8()) as u8;
                 f(Move::new(from, to, Piece::None, flag));
             }
         }
         if IS_ROOK {
             for from in pinned_orth_pieces {
-                let attacks =
-                    rook_attacks(from.as_usize(), self.occ()) & move_mask & pins.orth_rays;
+                let attacks = rook_attacks(from.as_usize(), occ) & move_mask & pins.orth_rays;
 
                 for to in attacks {
-                    let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
+                    let flag = CAPTURE_FLAG & (occ.0 >> to.as_u8()) as u8;
                     f(Move::new(from, to, Piece::None, flag));
                 }
             }
         }
         if IS_BISHOP {
             for from in pinned_diag_pieces {
-                let attacks =
-                    bishop_attacks(from.as_usize(), self.occ()) & move_mask & pins.diag_rays;
+                let attacks = bishop_attacks(from.as_usize(), occ) & move_mask & pins.diag_rays;
 
                 for to in attacks {
-                    let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
+                    let flag = CAPTURE_FLAG & (occ.0 >> to.as_u8()) as u8;
                     f(Move::new(from, to, Piece::None, flag));
                 }
             }
@@ -396,7 +396,7 @@ impl Board {
     }
 
     #[inline(always)]
-    fn compute_danger<const IS_WHITE: bool>(&self, king_sq: Square) -> Bitboard {
+    fn compute_danger<const IS_WHITE: bool>(&self, king_sq: Square, occ: Bitboard) -> Bitboard {
         let mut danger = Bitboard(0);
         let (pawn_attacks, knights, orth_pieces, diag_pieces, enemy_king) = if IS_WHITE {
             (
@@ -422,7 +422,7 @@ impl Board {
             )
         };
 
-        let kingless_occ = self.occ() ^ Bitboard::from(king_sq);
+        let kingless_occ = occ ^ Bitboard::from(king_sq);
         danger |= pawn_attacks;
         for sq in knights {
             danger |= KNIGHT_ATTACKS[sq.as_usize()];
@@ -439,18 +439,27 @@ impl Board {
     }
 
     #[inline(always)]
-    fn get_king_moves(&self, f: &mut impl FnMut(Move), king_sq: Square, nomove_mask: Bitboard) {
+    fn get_king_moves(
+        &self,
+        f: &mut impl FnMut(Move),
+        king_sq: Square,
+        nomove_mask: Bitboard,
+        occ: Bitboard,
+    ) {
         let attacks = unsafe { *KING_ATTACKS.get_unchecked(king_sq.as_usize()) } & !nomove_mask;
-        let occ = self.occ().0;
         for to in attacks {
-            let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
+            let flag = CAPTURE_FLAG & (occ.0 >> to.as_u8()) as u8;
 
             f(Move::new(king_sq, to, Piece::None, flag));
         }
     }
 
     #[inline(always)]
-    pub fn compute_checkers<const IS_WHITE: bool>(&self, king_sq: Square) -> Bitboard {
+    pub fn compute_checkers<const IS_WHITE: bool>(
+        &self,
+        king_sq: Square,
+        occ: Bitboard,
+    ) -> Bitboard {
         let mut checkers = Bitboard(0);
         let (pawns, pawn_attack_table, knights, orth_pieces, diag_pieces) = if IS_WHITE {
             (
@@ -476,10 +485,10 @@ impl Board {
         let knight_attacks = KNIGHT_ATTACKS[king_sq.as_usize()];
         checkers |= knight_attacks & knights;
 
-        let diag_attacks = bishop_attacks(king_sq.as_usize(), self.occ());
+        let diag_attacks = bishop_attacks(king_sq.as_usize(), occ);
         checkers |= diag_attacks & diag_pieces;
 
-        let orth_attacks = rook_attacks(king_sq.as_usize(), self.occ());
+        let orth_attacks = rook_attacks(king_sq.as_usize(), occ);
         checkers |= orth_attacks & orth_pieces;
 
         checkers
@@ -492,6 +501,7 @@ impl Board {
         us: Bitboard,
         orth_rays: Bitboard,
         diag_rays: Bitboard,
+        occ: Bitboard,
     ) -> PinInfo {
         let mut pinned_orth = Bitboard(0);
         let mut pinned_diag = Bitboard(0);
@@ -516,7 +526,7 @@ impl Board {
                     .get_unchecked(king_sq.as_usize())
                     .get_unchecked(attacker_sq.as_usize())
             };
-            let blockers = between & self.occ();
+            let blockers = between & occ;
             let our_blockers = between & us;
 
             if blockers.count_ones() == 1 && !our_blockers.is_empty() {
@@ -532,7 +542,7 @@ impl Board {
                     .get_unchecked(king_sq.as_usize())
                     .get_unchecked(attacker_sq.as_usize())
             };
-            let blockers = between & self.occ();
+            let blockers = between & occ;
             let our_blockers = between & us;
 
             if blockers.count_ones() == 1 && !our_blockers.is_empty() {
@@ -568,23 +578,24 @@ impl Board {
         &self,
         f: &mut impl FnMut(Move),
         king_danger_squares: Bitboard,
+        occ: Bitboard,
     ) {
         if IS_WHITE {
             if KING_SIDE
-                && (self.occ() & WK_EMPTY).is_empty()
+                && (occ & WK_EMPTY).is_empty()
                 && (king_danger_squares & WK_SAFE).is_empty()
             {
                 f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
             }
             if QUEEN_SIDE
-                && (self.occ() & WQ_EMPTY).is_empty()
+                && (occ & WQ_EMPTY).is_empty()
                 && (king_danger_squares & WQ_SAFE).is_empty()
             {
                 f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
             }
         } else {
             if KING_SIDE
-                && (self.occ() & BK_EMPTY).is_empty()
+                && (occ & BK_EMPTY).is_empty()
                 && (king_danger_squares & BK_SAFE).is_empty()
             {
                 f(Move::new(
@@ -595,7 +606,7 @@ impl Board {
                 ));
             }
             if QUEEN_SIDE
-                && (self.occ() & BQ_EMPTY).is_empty()
+                && (occ & BQ_EMPTY).is_empty()
                 && (king_danger_squares & BQ_SAFE).is_empty()
             {
                 f(Move::new(
@@ -615,6 +626,7 @@ impl Board {
         move_mask: Bitboard,
         king_sq: Square,
         pins: PinInfo,
+        occ: Bitboard,
     ) {
         let (knights, rooks, bishops, queens) = if IS_WHITE {
             (
@@ -631,11 +643,11 @@ impl Board {
                 self.pieces[Piece::BQ as usize],
             )
         };
-        self.get_pawn_moves::<IS_WHITE>(f, move_mask, king_sq, pins);
-        self.get_knight_moves(f, knights, move_mask, pins);
-        self.get_sliding_moves::<true, false>(f, rooks, move_mask, pins);
-        self.get_sliding_moves::<false, true>(f, bishops, move_mask, pins);
-        self.get_sliding_moves::<true, true>(f, queens, move_mask, pins);
+        self.get_pawn_moves::<IS_WHITE>(f, move_mask, king_sq, pins, occ);
+        self.get_knight_moves(f, knights, move_mask, pins, occ);
+        self.get_sliding_moves::<true, false>(f, rooks, move_mask, pins, occ);
+        self.get_sliding_moves::<false, true>(f, bishops, move_mask, pins, occ);
+        self.get_sliding_moves::<true, true>(f, queens, move_mask, pins, occ);
     }
 
     pub fn get_legal_moves_list(&self, moves: &mut MoveList) {
@@ -660,21 +672,23 @@ impl Board {
         );
         debug_assert!(king_sq.as_u8() < 64);
 
+        let occ = self.color_occ[0] | self.color_occ[1];
+
         let us = self.color_occ[if IS_WHITE {
             Color::White as usize
         } else {
             Color::Black as usize
         }];
 
-        let king_danger_mask = self.compute_danger::<IS_WHITE>(king_sq); // Squares the king cannot move to, i.e attacked squares if the king did not exist
+        let king_danger_mask = self.compute_danger::<IS_WHITE>(king_sq, occ); // Squares the king cannot move to, i.e attacked squares if the king did not exist
         let king_nomove_mask = king_danger_mask | us;
 
         let in_check = !(king_danger_mask & Bitboard::from(king_sq)).is_empty();
 
-        self.get_king_moves(&mut f, king_sq, king_nomove_mask);
+        self.get_king_moves(&mut f, king_sq, king_nomove_mask, occ);
 
         let move_mask = if in_check {
-            let checkers: Bitboard = self.compute_checkers::<IS_WHITE>(king_sq); // Bitmap of pieces that put the king in check
+            let checkers: Bitboard = self.compute_checkers::<IS_WHITE>(king_sq, occ); // Bitmap of pieces that put the king in check
 
             if checkers.count_ones() > 1 {
                 return; // If it is a double check, only king moves can be legal
@@ -691,12 +705,12 @@ impl Board {
             match rights {
                 0 => (),
                 r if r == king_side => {
-                    self.get_castling_moves::<IS_WHITE, true, false>(&mut f, king_danger_mask)
+                    self.get_castling_moves::<IS_WHITE, true, false>(&mut f, king_danger_mask, occ)
                 }
                 r if r == queen_side => {
-                    self.get_castling_moves::<IS_WHITE, false, true>(&mut f, king_danger_mask)
+                    self.get_castling_moves::<IS_WHITE, false, true>(&mut f, king_danger_mask, occ)
                 }
-                _ => self.get_castling_moves::<IS_WHITE, true, true>(&mut f, king_danger_mask),
+                _ => self.get_castling_moves::<IS_WHITE, true, true>(&mut f, king_danger_mask, occ),
             }
 
             !Bitboard(0) // All squares are valid to move to and capture on if not check are in place (except for pins)
@@ -709,12 +723,12 @@ impl Board {
             *BISHOP_ATTACKS.get_unchecked(*BISHOP_OFFSETS.get_unchecked(king_sq.as_usize()))
         };
 
-        let pins = self.compute_pins::<IS_WHITE>(king_sq, us, orth_rays, diag_rays);
+        let pins = self.compute_pins::<IS_WHITE>(king_sq, us, orth_rays, diag_rays, occ);
 
-        self.get_non_king_moves::<IS_WHITE>(&mut f, move_mask, king_sq, pins);
+        self.get_non_king_moves::<IS_WHITE>(&mut f, move_mask, king_sq, pins, occ);
     }
 
-    pub fn is_square_attacked(&self, sq: Square, attacker: Color) -> bool {
+    pub fn is_square_attacked(&self, sq: Square, attacker: Color, occ: Bitboard) -> bool {
         let sq_usize = sq.as_usize();
         let (pawn_table, pawn, knight, bishop, rook, queen, king) = match attacker {
             Color::White => (
@@ -747,7 +761,7 @@ impl Board {
 
         let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
         if !diag_attackers.is_empty() {
-            let diag_attacks = bishop_attacks(sq_usize, self.occ());
+            let diag_attacks = bishop_attacks(sq_usize, occ);
             if !(diag_attacks & diag_attackers).is_empty() {
                 return true;
             }
@@ -755,7 +769,7 @@ impl Board {
 
         let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
         if !orth_attackers.is_empty() {
-            let orth_attacks = rook_attacks(sq_usize, self.occ());
+            let orth_attacks = rook_attacks(sq_usize, occ);
             if !(orth_attacks & orth_attackers).is_empty() {
                 return true;
             }

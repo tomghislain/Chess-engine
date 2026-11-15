@@ -253,11 +253,6 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn occ(&self) -> Bitboard {
-        self.color_occ[0] | self.color_occ[1]
-    }
-
-    #[inline(always)]
     pub fn piece_at(&self, sq: Square) -> Piece {
         debug_assert!(sq.as_u8() < 64);
         unsafe { *self.mailbox.get_unchecked(sq.as_usize()) }
@@ -494,7 +489,7 @@ impl Board {
             Color::Black => Square(self.pieces[Piece::WK as usize].trailing_zeros()),
             Color::White => Square(self.pieces[Piece::BK as usize].trailing_zeros()),
         };
-        self.is_square_attacked(king_sq, attacker)
+        self.is_square_attacked(king_sq, attacker, self.color_occ[0] | self.color_occ[1])
     }
 
     const fn is_50_move_draw(&self) -> bool {
