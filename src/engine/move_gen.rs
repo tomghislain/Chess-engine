@@ -51,7 +51,7 @@ impl Board {
         } else {
             [Piece::BN, Piece::BB, Piece::BR, Piece::BQ]
         };
-        let empty = !self.occ;
+        let empty = !self.occ();
         let promotion_pawns = if IS_WHITE {
             pawns & RANK_7
         } else {
@@ -257,7 +257,7 @@ impl Board {
                 (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns
             };
             for from in candidates {
-                let changed_occ = self.occ ^ (Bitboard::from(from)) ^ (captured_bb) ^ (to_bb);
+                let changed_occ = self.occ() ^ (Bitboard::from(from)) ^ (captured_bb) ^ (to_bb);
                 let changed_pawns = if IS_WHITE {
                     self.pieces[Piece::BP as usize] ^ captured_bb
                 } else {
@@ -331,7 +331,7 @@ impl Board {
         pins: PinInfo,
     ) {
         let free_knights = knights & !(pins.pinned_orth | pins.pinned_diag);
-        let occ = self.occ.0;
+        let occ = self.occ().0;
         for from in free_knights {
             let attacks = unsafe { *KNIGHT_ATTACKS.get_unchecked(from.as_usize()) } & move_mask;
 
@@ -355,14 +355,14 @@ impl Board {
         let pinned_orth_pieces = pieces & pins.pinned_orth;
         let pinned_diag_pieces = pieces & pins.pinned_diag;
 
-        let occ = self.occ.0;
+        let occ = self.occ().0;
         for from in free_pieces {
             let mut attacks = Bitboard(0);
             if IS_ROOK {
-                attacks |= rook_attacks(from.as_usize(), self.occ);
+                attacks |= rook_attacks(from.as_usize(), self.occ());
             }
             if IS_BISHOP {
-                attacks |= bishop_attacks(from.as_usize(), self.occ);
+                attacks |= bishop_attacks(from.as_usize(), self.occ());
             }
             attacks &= move_mask;
 
@@ -373,7 +373,8 @@ impl Board {
         }
         if IS_ROOK {
             for from in pinned_orth_pieces {
-                let attacks = rook_attacks(from.as_usize(), self.occ) & move_mask & pins.orth_rays;
+                let attacks =
+                    rook_attacks(from.as_usize(), self.occ()) & move_mask & pins.orth_rays;
 
                 for to in attacks {
                     let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -384,7 +385,7 @@ impl Board {
         if IS_BISHOP {
             for from in pinned_diag_pieces {
                 let attacks =
-                    bishop_attacks(from.as_usize(), self.occ) & move_mask & pins.diag_rays;
+                    bishop_attacks(from.as_usize(), self.occ()) & move_mask & pins.diag_rays;
 
                 for to in attacks {
                     let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
@@ -421,7 +422,7 @@ impl Board {
             )
         };
 
-        let kingless_occ = self.occ ^ Bitboard::from(king_sq);
+        let kingless_occ = self.occ() ^ Bitboard::from(king_sq);
         danger |= pawn_attacks;
         for sq in knights {
             danger |= KNIGHT_ATTACKS[sq.as_usize()];
@@ -440,7 +441,7 @@ impl Board {
     #[inline(always)]
     fn get_king_moves(&self, f: &mut impl FnMut(Move), king_sq: Square, nomove_mask: Bitboard) {
         let attacks = unsafe { *KING_ATTACKS.get_unchecked(king_sq.as_usize()) } & !nomove_mask;
-        let occ = self.occ.0;
+        let occ = self.occ().0;
         for to in attacks {
             let flag = CAPTURE_FLAG & (occ >> to.as_u8()) as u8;
 
@@ -475,10 +476,10 @@ impl Board {
         let knight_attacks = KNIGHT_ATTACKS[king_sq.as_usize()];
         checkers |= knight_attacks & knights;
 
-        let diag_attacks = bishop_attacks(king_sq.as_usize(), self.occ);
+        let diag_attacks = bishop_attacks(king_sq.as_usize(), self.occ());
         checkers |= diag_attacks & diag_pieces;
 
-        let orth_attacks = rook_attacks(king_sq.as_usize(), self.occ);
+        let orth_attacks = rook_attacks(king_sq.as_usize(), self.occ());
         checkers |= orth_attacks & orth_pieces;
 
         checkers
@@ -515,7 +516,7 @@ impl Board {
                     .get_unchecked(king_sq.as_usize())
                     .get_unchecked(attacker_sq.as_usize())
             };
-            let blockers = between & self.occ;
+            let blockers = between & self.occ();
             let our_blockers = between & us;
 
             if blockers.count_ones() == 1 && !our_blockers.is_empty() {
@@ -531,7 +532,7 @@ impl Board {
                     .get_unchecked(king_sq.as_usize())
                     .get_unchecked(attacker_sq.as_usize())
             };
-            let blockers = between & self.occ;
+            let blockers = between & self.occ();
             let our_blockers = between & us;
 
             if blockers.count_ones() == 1 && !our_blockers.is_empty() {
@@ -570,20 +571,20 @@ impl Board {
     ) {
         if IS_WHITE {
             if KING_SIDE
-                && (self.occ & WK_EMPTY).is_empty()
+                && (self.occ() & WK_EMPTY).is_empty()
                 && (king_danger_squares & WK_SAFE).is_empty()
             {
                 f(Move::new(Square(4), Square(6), Piece::None, CASTLING_FLAG));
             }
             if QUEEN_SIDE
-                && (self.occ & WQ_EMPTY).is_empty()
+                && (self.occ() & WQ_EMPTY).is_empty()
                 && (king_danger_squares & WQ_SAFE).is_empty()
             {
                 f(Move::new(Square(4), Square(2), Piece::None, CASTLING_FLAG));
             }
         } else {
             if KING_SIDE
-                && (self.occ & BK_EMPTY).is_empty()
+                && (self.occ() & BK_EMPTY).is_empty()
                 && (king_danger_squares & BK_SAFE).is_empty()
             {
                 f(Move::new(
@@ -594,7 +595,7 @@ impl Board {
                 ));
             }
             if QUEEN_SIDE
-                && (self.occ & BQ_EMPTY).is_empty()
+                && (self.occ() & BQ_EMPTY).is_empty()
                 && (king_danger_squares & BQ_SAFE).is_empty()
             {
                 f(Move::new(
@@ -746,7 +747,7 @@ impl Board {
 
         let diag_attackers = self.pieces[bishop as usize] | self.pieces[queen as usize];
         if !diag_attackers.is_empty() {
-            let diag_attacks = bishop_attacks(sq_usize, self.occ);
+            let diag_attacks = bishop_attacks(sq_usize, self.occ());
             if !(diag_attacks & diag_attackers).is_empty() {
                 return true;
             }
@@ -754,7 +755,7 @@ impl Board {
 
         let orth_attackers = self.pieces[rook as usize] | self.pieces[queen as usize];
         if !orth_attackers.is_empty() {
-            let orth_attacks = rook_attacks(sq_usize, self.occ);
+            let orth_attacks = rook_attacks(sq_usize, self.occ());
             if !(orth_attacks & orth_attackers).is_empty() {
                 return true;
             }

@@ -76,18 +76,16 @@ const CASTLING_UPDATE: [u8; 64] = [
 ];
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct Board {
+    pub hash: u64,
     pub pieces: [Bitboard; 12],
     pub color_occ: [Bitboard; 2],
     pub mailbox: [Piece; 64],
-    pub occ: Bitboard,
-
     pub side_to_move: Color,
-
     pub castling: u8,
     pub en_passant: Square,
     pub halfmove_clock: u8,
-    pub hash: u64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -208,7 +206,6 @@ impl Board {
                 | pieces[Piece::BQ as usize]
                 | pieces[Piece::BK as usize],
         ];
-        let occ = color_occ[0] | color_occ[1];
 
         let side_to_move = match side_str {
             "w" => Color::White,
@@ -245,7 +242,6 @@ impl Board {
             pieces,
             color_occ,
             mailbox,
-            occ,
             side_to_move,
             castling,
             en_passant,
@@ -254,6 +250,11 @@ impl Board {
         };
         b.hash = b.compute_zobrist();
         b
+    }
+
+    #[inline(always)]
+    pub fn occ(&self) -> Bitboard {
+        self.color_occ[0] | self.color_occ[1]
     }
 
     #[inline(always)]
@@ -372,7 +373,6 @@ impl Board {
         }
 
         // Update occupancy
-        self.occ ^= moving_side_mask ^ opponent_side_mask;
         self.color_occ[side_to_move as usize] ^= moving_side_mask;
         self.color_occ[opponent as usize] ^= opponent_side_mask;
 
@@ -478,7 +478,6 @@ impl Board {
         }
 
         // Recompute occupancy
-        self.occ ^= moving_side_mask ^ opponent_side_mask;
         self.color_occ[self.side_to_move as usize] ^= moving_side_mask;
         self.color_occ[self.side_to_move.flip() as usize] ^= opponent_side_mask;
 
@@ -732,7 +731,6 @@ impl Default for Board {
             pieces,
             color_occ,
             mailbox,
-            occ: color_occ[0] | color_occ[1],
             side_to_move: Color::White,
             castling: WK_CASTLE | WQ_CASTLE | BK_CASTLE | BQ_CASTLE,
             en_passant: Square::NO_SQUARE,
