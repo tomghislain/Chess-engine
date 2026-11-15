@@ -249,31 +249,21 @@ impl Board {
         // En passant
         if self.en_passant != Square::NO_SQUARE {
             let to = self.en_passant;
-            let en_passant_mask = Bitboard::from(to);
-            let captured_mask = if IS_WHITE {
-                en_passant_mask >> 8
-            } else {
-                en_passant_mask << 8
-            };
-            let attacks = if IS_WHITE {
+            let to_bb = Bitboard::from(to);
+            let captured_bb = if IS_WHITE { to_bb >> 8 } else { to_bb << 8 };
+            let candidates = if IS_WHITE {
                 (WHITE_PAWN_ATTACKS[to.as_usize()] >> 16) & pawns
             } else {
                 (BLACK_PAWN_ATTACKS[to.as_usize()] << 16) & pawns
-            }; // Pawn attack table reuse for cache locality
-            for from in attacks {
-                let changed_occ =
-                    self.occ ^ (Bitboard::from(from)) ^ (captured_mask) ^ (en_passant_mask);
+            };
+            for from in candidates {
+                let changed_occ = self.occ ^ (Bitboard::from(from)) ^ (captured_bb) ^ (to_bb);
                 let changed_pawns = if IS_WHITE {
-                    self.pieces[Piece::BP as usize] ^ captured_mask
+                    self.pieces[Piece::BP as usize] ^ captured_bb
                 } else {
-                    self.pieces[Piece::WP as usize] ^ captured_mask
+                    self.pieces[Piece::WP as usize] ^ captured_bb
                 };
-                if !self.would_en_passant_check(
-                    king_sq,
-                    if IS_WHITE { Color::Black } else { Color::White },
-                    changed_occ,
-                    changed_pawns,
-                ) {
+                if !self.would_en_passant_check::<IS_WHITE>(king_sq, changed_occ, changed_pawns) {
                     f(Move::new(
                         from,
                         to,
@@ -286,27 +276,27 @@ impl Board {
     }
 
     #[inline(always)]
-    fn would_en_passant_check(
+    fn would_en_passant_check<const IS_WHITE: bool>(
         &self,
-        sq: Square,
-        attacker: Color,
+        king_sq: Square,
         changed_occ: Bitboard,
         attacker_pawns: Bitboard,
     ) -> bool {
-        let sq_usize = sq.as_usize();
-        let (pawn_table, attacker_bishops, attacker_rooks, attacker_queens) = match attacker {
-            Color::White => (
+        let sq_usize = king_sq.as_usize();
+        let (pawn_table, attacker_bishops, attacker_rooks, attacker_queens) = if IS_WHITE {
+            (
                 BLACK_PAWN_ATTACKS,
                 self.pieces[Piece::WB as usize],
                 self.pieces[Piece::WR as usize],
                 self.pieces[Piece::WQ as usize],
-            ),
-            Color::Black => (
+            )
+        } else {
+            (
                 WHITE_PAWN_ATTACKS,
                 self.pieces[Piece::BB as usize],
                 self.pieces[Piece::BR as usize],
                 self.pieces[Piece::BQ as usize],
-            ),
+            )
         };
 
         if !(pawn_table[sq_usize] & attacker_pawns).is_empty() {
