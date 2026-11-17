@@ -57,4 +57,4 @@ There are currently 2 binaries :
 ### AI
 The Agents are:
 - MCTS, an agent based on randomness and statistics, for which my goal is to make it as strong as possible without using heuristics
-- Negamax, the classical basic chess AI algorithm, with alpha-beta prunning and hashtables, uses an evaluation function (material evalutation)
+- Negamax, the classical basic chess AI algorithm, with alpha-beta prunning and hashtables, uses an evaluation function (material evaluation)
