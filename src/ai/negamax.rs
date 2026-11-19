@@ -24,6 +24,7 @@ fn negamax(
     tt: &mut TranspositionTable,
 ) -> isize {
     let original_alpha = alpha;
+    let original_beta = beta;
     let hash = game.b.hash;
 
     // Check transposition table
@@ -65,9 +66,8 @@ fn negamax(
         let score = -negamax(game, depth - 1, -beta, -alpha, tt);
         game.unmake_move();
 
-        if score > best_score {
-            best_score = score;
-        }
+        best_score = best_score.max(score);
+
         alpha = alpha.max(score);
         if alpha >= beta {
             break;
@@ -76,7 +76,7 @@ fn negamax(
 
     let flag = if best_score <= original_alpha {
         TTFlag::UpperBound
-    } else if best_score >= beta {
+    } else if best_score >= original_beta {
         TTFlag::LowerBound
     } else {
         TTFlag::Exact
